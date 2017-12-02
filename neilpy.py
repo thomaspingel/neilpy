@@ -112,6 +112,125 @@ def z_factor(latitude):
     return z_factor
     
 
+"""
+References:
+http://stackoverflow.com/questions/16573089/reading-binary-data-into-pandas
+https://docs.scipy.org/doc/numpy/reference/arrays.dtypes.html
+LAZ http://howardbutler.com/javascript-laz-implementation.html
+"""
+
+# Reads a file into pandas dataframe
+# Originally developed as research/current/bonemap
+# A pure python las reader
+def read_las(filename):
+
+    with open(filename,mode='rb') as file:
+        data = file.read()
+    
+    point_data_format_key = {0:20,1:28,2:26,3:34,4:57,5:63}
+    
+    # Read header into a dictionary
+    header = {}
+    header['file_signature'] = struct.unpack('<4s',data[0:4])[0].decode('utf-8')
+    header['file_source_id'] = struct.unpack('<H',data[4:6])[0]
+    header['global_encoding'] = struct.unpack('<H',data[6:8])[0]
+    project_id = []
+    project_id.append(struct.unpack('<L',data[8:12])[0])
+    project_id.append(struct.unpack('<H',data[12:14])[0])
+    project_id.append(struct.unpack('<H',data[14:16])[0])
+    #Fix
+    #project_id.append(struct.unpack('8s',data[16:24])[0].decode('utf-8').rstrip('\x00'))
+    header['project_id'] = project_id
+    del project_id
+    header['version_major'] = struct.unpack('<B',data[24:25])[0]
+    header['version_minor'] = struct.unpack('<B',data[25:26])[0]
+    header['version'] = header['version_major'] + header['version_minor']/10
+    header['system_id'] = struct.unpack('32s',data[26:58])[0].decode('utf-8').rstrip('\x00')
+    header['generating_software'] = struct.unpack('32s',data[58:90])[0].decode('utf-8').rstrip('\x00')
+    header['file_creation_day'] = struct.unpack('H',data[90:92])[0]
+    header['file_creation_year'] = struct.unpack('<H',data[92:94])[0]
+    header['header_size'] = struct.unpack('H',data[94:96])[0]
+    header['point_data_offset'] = struct.unpack('<L',data[96:100])[0]
+    header['num_variable_records'] = struct.unpack('<L',data[100:104])[0]
+    header['point_data_format_id'] = struct.unpack('<B',data[104:105])[0]
+    laz_format = False
+    if header['point_data_format_id'] >= 128 and header['point_data_format_id'] <= 133:
+        laz_format = True
+        header['point_data_format_id'] = point_data_format_id - 128
+    if laz_format:
+        raise ValueError('LAZ not yet supported.')
+    format_length = point_data_format_key[header['point_data_format_id']]
+    header['point_data_record_length'] = struct.unpack('<H',data[105:107])[0]
+    header['num_point_records'] = struct.unpack('<L',data[107:111])[0]
+    header['num_points_by_return'] = struct.unpack('<5L',data[111:131])
+    header['scale'] = struct.unpack('<3d',data[131:155])
+    header['offset'] = struct.unpack('<3d',data[155:179])
+    header['minmax'] = struct.unpack('<6d',data[179:227]) #xmax,xmin,ymax,ymin,zmax,zmin
+    end_point_data = len(data)
+    
+    # For version 1.3, read in the location of the point data.  At this time
+    # no wave information will be read
+    header_length = 227
+    if header['version']==1.3:
+        header['begin_wave_form'] = struct.unpack('<q',data[227:235])[0]
+        header_length = 235
+        if header['begin_wave_form'] != 0:
+            end_point_data = header['begin_wave_form']
+
+    # Pare out only the point data
+    data = data[header['point_data_offset']:end_point_data]
+
+    if header['point_data_format_id']==1:
+        dt = np.dtype([('x', 'i4'), ('y', 'i4'), ('z', 'i4'), ('intensity', 'u2'),
+                       ('return_byte','u1'),('class','u1'),('scan_angle','u1'),
+                       ('user_data','u1'),('point_source_id','u2'),('gpstime','f8')])
+    
+    elif header['point_data_format_id']==2:
+        dt = np.dtype([('x', 'i4'), ('y', 'i4'), ('z', 'i4'), ('intensity', 'u2'),
+                       ('return_byte','u1'),('class','u1'),('scan_angle','u1'),
+                       ('user_data','u1'),('point_source_id','u2'),('red','u2'),
+                       ('green','u2'),('blue','u2')])
+    elif header['point_data_format_id']==3:
+        dt = np.dtype([('x', 'i4'), ('y', 'i4'), ('z', 'i4'), ('intensity', 'u2'),
+                       ('return_byte','u1'),('class','u1'),('scan_angle','u1'),
+                       ('user_data','u1'),('point_source_id','u2'),('gpstime','f8'),
+                       ('red','u2'),('green','u2'),('blue','u2')])
+    elif header['point_data_format_id']==4:
+        dt = np.dtype([('x', 'i4'), ('y', 'i4'), ('z', 'i4'), ('intensity', 'u2'),
+                       ('return_byte','u1'),('class','u1'),('scan_angle','u1'),
+                       ('user_data','u1'),('point_source_id','u2'),('gpstime','f8'),
+                       ('wave_packet_descriptor_index','u1'),('byte_offset','u8'),
+                       ('wave_packet_size','u4'),('return_point_waveform_location','f4'),
+                       ('xt','f4'),('yt','f4'),('zt','f4')])
+    elif header['point_data_format_id']==5:
+        dt = np.dtype([('x', 'i4'), ('y', 'i4'), ('z', 'i4'), ('intensity', 'u2'),
+                       ('return_byte','u1'),('class','u1'),('scan_angle','u1'),
+                       ('user_data','u1'),('point_source_id','u2'),('gpstime','f8'),
+                       ('red','u2'),('green','u2'),('blue','u2'),
+                       ('wave_packet_descriptor_index','u1'),('byte_offset','u8'),
+                       ('wave_packet_size','u4'),('return_point_waveform_location','f4'),
+                       ('xt','f4'),('yt','f4'),('zt','f4')])
+
+    # Transform to Pandas dataframe, via a numpy array
+    data = pd.DataFrame(np.frombuffer(data,dt))
+    data['x'] = data['x']*header['scale'][0] + header['offset'][0]
+    data['y'] = data['y']*header['scale'][1] + header['offset'][1]
+    data['z'] = data['z']*header['scale'][2] + header['offset'][2]
+
+    def get_bit(byteval,idx):
+        return ((byteval&(1<<idx))!=0);
+
+    # Recast the return_byte to get return number (3 bits), the maximum return (3
+    # bits), and the scan direction and edge of flight line flags (1 bit each)
+    data['return_number'] = 4 * get_bit(data['return_byte'],2).astype(np.uint8) + 2 * get_bit(data['return_byte'],1).astype(np.uint8) + get_bit(data['return_byte'],0).astype(np.uint8)
+    data['return_max'] = 4 * get_bit(data['return_byte'],5).astype(np.uint8) + 2 * get_bit(data['return_byte'],4).astype(np.uint8) + get_bit(data['return_byte'],3).astype(np.uint8)
+    data['scan_direction'] = get_bit(data['return_byte'],6)
+    data['edge_of_flight_line'] = get_bit(data['return_byte'],7)
+    del data['return_byte']
+    
+    return header,data
+
+
 #%%
 S = slope(Z,src.transform[0])   
 A = aspect(Z)    
