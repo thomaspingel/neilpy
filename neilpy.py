@@ -99,6 +99,17 @@ def pssm(Z,cellsize=1,ve=2.3,reverse=False):
     else:
         P = plt.cm.bone(P)
     return P
+
+def z_factor(latitude):
+    # https://blogs.esri.com/esri/arcgis/2007/06/12/setting-the-z-factor-parameter-correctly/
+    latitude = np.deg2rad(latitude)
+    m=6367449;
+    a=6378137;
+    b=6356752.3;
+    numer=(a**4)*(np.cos(latitude)**2) + (b**4)*(np.sin(latitude)**2);
+    denom=(a*np.cos(latitude))**2 + (b*np.sin(latitude))**2;
+    z_factor = 1 / (np.pi / 180 * np.cos(latitude) * np.sqrt(numer/denom))
+    return z_factor
     
 
 #%%
@@ -115,3 +126,5 @@ plt.imshow(H,cmap='gray_r',aspect='equal')
 P = pssm(Z,cellsize=src.transform[0],reverse=True)
 plt.imshow(P,aspect='equal')
 
+#%%
+# zvalue = 1/((np.pi / 180) * cosd(lat)*(sqrt(numer/denom)));
