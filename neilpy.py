@@ -6,18 +6,17 @@ Created on Fri Dec  1 21:40:01 2017
 """
 
 #%%
+import struct
+import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import scipy.ndimage as ndi
 import rasterio
+import scipy.ndimage as ndi
+from scipy import stats
 from scipy import sparse
 from scipy import linalg
 from scipy.signal import convolve2d
 from scipy import interpolate
-import struct
-from scipy import stats
-import pandas as pd
-from scipy import sparse
 
 #%%
 
@@ -123,60 +122,6 @@ def z_factor(latitude):
     z_factor = 1 / (np.pi / 180 * np.cos(latitude) * np.sqrt(numer/denom))
     return z_factor
 
-# This function returns positive openness.  To calculate negative openness,
-# call with -Z.
-def openness(Z,cellsize,lookup_pixels):
-
-    nrows, ncols = np.shape(Z)
-        
-    # neighbor directions are clockwise from top left
-    neighbors = np.arange(8)    
-    
-    # Define a (fairly large) 3D matrix to hold the minimum angle for each pixel
-    # for each of 8 directions
-    opn = np.Inf * np.ones((8,nrows,ncols))
-    
-    # Define an array to calculate distances to neighboring pixels
-    dlist = np.array([np.sqrt(2),1])
-
-    # Calculate minimum angles        
-    for this_distance in np.arange(1,lookup_pixels+1):
-        for direction in neighbors:
-            # Map distance to this pixel:
-            dist = cellsize * dlist[np.mod(direction,2)]
-            # Angle is the arctan of the difference in elevations, divided my distance
-            this_angle = 90.0 - np.rad2deg(np.arctan((ashift(Z,direction,lookup_pixels)-Z)/dist))
-            # Make the replacement
-            this_layer = opn[direction,:,:]
-            where_smaller = this_angle < opn[direction,:,:]
-            this_layer[where_smaller] = this_angle[where_smaller]
-            
-            opn[direction,:,:] = this_layer
-
-    # Openness is definted as the mean of the minimum angles of all 8 neighbors        
-    return np.mean(opn,0)
-    
-# ashift pulls a copy of the raster shifted.  0 shifts upper-left to lower right
-# 1 shifts top-to-bottom, etc.  Clockwise from upper left.
-def ashift(surface,direction,n=1):
-    surface = surface.copy()
-    if direction==0:
-        surface[n:,n:] = surface[0:-n,0:-n]
-    elif direction==1:
-        surface[n:,:] = surface[0:-n,:]
-    elif direction==2:
-        surface[n:,0:-n] = surface[0:-n,n:]
-    elif direction==3:
-        surface[:,0:-n] = surface[:,n:]
-    elif direction==4:
-        surface[0:-n,0:-n] = surface[n:,n:]
-    elif direction==5:
-        surface[0:-n,:] = surface[n:,:]
-    elif direction==6:
-        surface[0:-n,n:] = surface[n:,0:-n]
-    elif direction==7:
-        surface[:,n:] = surface[:,0:-n]
-    return surface
 
 
 #%% Lidar routines
@@ -460,13 +405,34 @@ def inpaint_nans_by_springs(A,inplace=False,neighbors=4):
         
 # TODO: add SMRF, add GEOMORPHONS, SWISS SHADING, more INTERPOlATORS
 
-bc = np.zeros(np.shape(Z),dtype=np.uint32)
-f = np.array([1],dtype=np.uint32)
-for i in range(8):
-    print(i)
-    O = openness(Z,Zt[0],3,neighbors=np.array([i])) - openness(-Z,Zt[0],3,neighbors=np.array([i]))
 
 #%%
+    
+# ashift pulls a copy of the raster shifted.  0 shifts upper-left to lower right
+# 1 shifts top-to-bottom, etc.  Clockwise from upper left.
+def ashift(surface,direction,n=1):
+    surface = surface.copy()
+    if direction==0:
+        surface[n:,n:] = surface[0:-n,0:-n]
+    elif direction==1:
+        surface[n:,:] = surface[0:-n,:]
+    elif direction==2:
+        surface[n:,0:-n] = surface[0:-n,n:]
+    elif direction==3:
+        surface[:,0:-n] = surface[:,n:]
+    elif direction==4:
+        surface[0:-n,0:-n] = surface[n:,n:]
+    elif direction==5:
+        surface[0:-n,:] = surface[n:,:]
+    elif direction==6:
+        surface[0:-n,n:] = surface[n:,0:-n]
+    elif direction==7:
+        surface[:,n:] = surface[:,0:-n]
+    return surface
+
+
+#%%
+
 def openness(Z,cellsize,lookup_pixels,neighbors=np.arange(8)):
 
     nrows, ncols = np.shape(Z)
@@ -477,7 +443,6 @@ def openness(Z,cellsize,lookup_pixels,neighbors=np.arange(8)):
     # Define a (fairly large) 3D matrix to hold the minimum angle for each pixel
     # for each of 8 directions
     opn = np.Inf * np.ones((len(neighbors),nrows,ncols))
-    print(np.shape(opn))
     
     # Define an array to calculate distances to neighboring pixels
     dlist = np.array([np.sqrt(2),1])
@@ -500,6 +465,81 @@ def openness(Z,cellsize,lookup_pixels,neighbors=np.arange(8)):
     # Openness is definted as the mean of the minimum angles of all 8 neighbors        
     return np.mean(opn,0)
 
+#%%
+    
+# This routine uses openness to generate a ternary pattern based on the 
+# difference of the positive and negative openness values.  If the difference
+# is above a supplied threshold, the value is "high" or 2.  If the difference
+# is below the threshold, it is 1 or "equal".  If the difference is less than 
+# the negative threshold, it is 0 or "low".
+    
+# The algorithm proceeds through each 8 directions, one at a time, building
+# a list of 8 ternary values (e.g., 21120210).  Previously, these would have 
+# been recorded, and then converted to decimal; here they are converted
+# to decimal as it progresses.  Upper left pixel is the least significant
+# digit, left pixel is the most significant pixel.
+    
+def ternary_pattern_from_openness(Z,cellsize,lookup_pixels,threshold_angle=1):
+    pows = 3**np.arange(8)
+    #bc = np.zeros(np.shape(Z),dtype=np.uint32)
+    tc = np.zeros(np.shape(Z),dtype=np.uint16)
+    f = 1
+    for i in range(8):
+        O = openness(Z,cellsize,lookup_pixels,neighbors=np.array([i]))
+        O = O - openness(-Z,cellsize,lookup_pixels,neighbors=np.array([i]))
+        tempMat = np.ones(np.shape(bc),dtype=np.uint32);
+        tempMat[O > threshold_angle] = 2;
+        tempMat[O < -threshold_angle] = 0;
+    
+        # Record the result.
+        #bc = bc + f*tempMat;
+        tc = tc + tempMat*pows[i] 
+    
+        # Increment f
+        f = f * 10;
+    
+    return tc
+
+
+#%%
+# Adapted from https://stackoverflow.com/questions/2267362/how-to-convert-an-integer-in-any-base-to-a-string
+def int2base(x,b,alphabet='0123456789abcdefghijklmnopqrstuvwxyz',min_digits=8):
+    rets=''
+    while x>0:
+        x,idx = divmod(x,b)
+        rets = alphabet[idx] + rets
+    if len(rets) < min_digits:
+        pad = ''
+        for i in range(min_digits - len(rets)):
+            pad = pad + '0'
+        rets = pad + rets
+    return rets
+
+
+
+#%%
+    
+def get_all_equivalents(values = np.arange(3**8)):
+    def get_equivalent(i):
+        s = int2base(i,3)
+        min_val = int(s,3)
+        for j in range(1,16):
+            s = s[-1] + s[:7]
+            min_val = min(min_val,int(s,3))
+            if j==7:
+                s = s[::-1]
+        return min_val
+    
+    for i in values:
+        values[i] = get_equivalent(i)
+    values = np.array(values)
+    return values
+
+#%%
+
+
+tc = ternary_pattern_from_openness(Z,cellsize=Zt[0],lookup_pixels=20,threshold_angle=1)
+lut= get
 #%%
 #S = slope(Z,src.transform[0])   
 #A = aspect(Z)    
