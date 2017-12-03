@@ -10,15 +10,23 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.ndimage as ndi
 import rasterio
+from scipy import sparse
+from scipy import linalg
+from scipy.signal import convolve2d
+from scipy import interpolate
+import struct
+from scipy import stats
+import pandas as pd
+from scipy import sparse
 
 #%%
 
-with rasterio.open('sample_dem.tif') as src:
-    Z = src.read(1)
-    #Z = Z.astype(np.float)
-    # Z[Z==src.nodata] = np.nan
+#with rasterio.open('sample_dem.tif') as src:
+#    Z = src.read(1)
+#    Zt = src.transform
     
-#%%
+#%% Raster visualization functions
+    
 # http://edndoc.esri.com/arcobjects/9.2/net/shared/geoprocessing/spatial_analyst_tools/how_hillshade_works.htm
 def esri_slope(Z,cellsize=1,z_factor=1,return_as='degrees'):    
     def slope_filter(n):
@@ -67,14 +75,18 @@ def aspect(Z,return_as='degrees',flat_as='nan'):
         A[(gx==0) & (gy==0)] = flat_as
         return A
 
+# http://edndoc.esri.com/arcobjects/9.2/net/shared/geoprocessing/spatial_analyst_tools/how_hillshade_works.htm
 def hillshade(Z,cellsize=1,z_factor=1,zenith=45,azimuth=315):
     zenith, azimuth = np.deg2rad((zenith,azimuth))
     S = slope(Z,cellsize=cellsize,z_factor=z_factor,return_as='radians')
     A = aspect(Z,return_as='radians',flat_as=0)
     H = (np.cos(zenith) * np.cos(S)) + (np.sin(zenith) * np.sin(S) * np.cos(azimuth - A))
     H[H<0] = 0
+    H = 255 * H
+    H = np.round(H).astype(np.uint8)
     return H
 
+# This could still use some work.
 def multiple_illumination(Z,cellsize=1,z_factor=1,zeniths=np.array([45]),azimuths=4):
     if np.isscalar(azimuths):
         azimuths = np.arange(0,360,360/azimuths)
@@ -84,7 +96,7 @@ def multiple_illumination(Z,cellsize=1,z_factor=1,zeniths=np.array([45]),azimuth
     H = np.zeros(np.shape(Z))
     for zenith in zeniths:
         for azimuth in azimuths:
-            H1 = hillshade(Z,src.transform[0],z_factor=z_factor,zenith=zenith,azimuth=azimuth)
+            H1 = hillshade(Z,cellsize=cellsize,z_factor=z_factor,zenith=zenith,azimuth=azimuth)
             H = np.stack((H,H1),axis=2)
             H = np.max(H,axis=2)
     return H
@@ -111,7 +123,7 @@ def z_factor(latitude):
     z_factor = 1 / (np.pi / 180 * np.cos(latitude) * np.sqrt(numer/denom))
     return z_factor
     
-
+#%% Lidar routines
 """
 References:
 http://stackoverflow.com/questions/16573089/reading-binary-data-into-pandas
@@ -120,7 +132,7 @@ LAZ http://howardbutler.com/javascript-laz-implementation.html
 """
 
 # Reads a file into pandas dataframe
-# Originally developed as research/current/bonemap
+# Originally developed as research/current/lidar/bonemap
 # A pure python las reader
 def read_las(filename):
 
@@ -230,20 +242,175 @@ def read_las(filename):
     
     return header,data
 
+#%%
+
+# Using scipy's binned statistic would be preferable here, but it doesn't do
+# min/max natively, and is too slow when not cython.
+# Z,xi,yi,binnum = stats.binned_statistic_2d(x,y,z,statistic='min',bins=(x_edge,y_edge))
+def create_dem(x,y,z,resolution=1,bin_type='max',use_binned_statistic=False):
+    
+    #x = df.x.values
+    #y = df.y.values
+    #z = df.z.values
+    #resolution = 1
+    #bin_type = 'max' 
+    floor2 = lambda x,v: v*np.floor(x/v)
+    ceil2 = lambda x,v: v*np.ceil(x/v)
+    
+    
+    xedges = np.arange(floor2(np.min(x),resolution)-.5*resolution,
+                       ceil2(np.max(x),resolution) + 1.5*resolution,resolution)
+    yedges = np.arange(ceil2(np.max(y),resolution)+.5*resolution,
+                       floor2(np.min(y),resolution) - 1.5*resolution,-resolution)
+    nx, ny = len(xedges)-1,len(yedges)-1
+    
+    I = np.empty(nx*ny)
+    I[:] = np.nan
+    
+    # Define an affine matrix, and convert realspace coordinates to integer pixel
+    # coordinates
+    t = rasterio.transform.from_origin(xedges[0], yedges[0], resolution, resolution)
+    c,r = ~t * (x,y)
+    c,r = np.floor(c).astype(np.int64), np.floor(r).astype(np.int64)
+    
+    # Old way:
+    # Use pixel coordiantes to create a flat index; use that index to aggegrate, 
+    # using pandas.
+    if use_binned_statistic:
+        I = stats.binned_statistic_2d(x,y,z,statistic='min',bins=(xedges,yedges))
+    else:        
+        mx = pd.DataFrame({'i':np.ravel_multi_index((r,c),(ny,nx)),'z':z}).groupby('i')
+        del c,r
+        if bin_type=='max':
+            mx = mx.max()
+        elif bin_type=='min':
+            mx = mx.min()
+        else:
+            raise ValueError('This type not supported.')
+        
+        I.flat[mx.index.values] = mx.values
+        I = I.reshape((ny,nx))
+    
+    return I,t
+
+
+#%% Inpainting.  See research/current/inpaint/inpaint_nans.py for full details
+# Finite difference approximation
+def inpaint_nans_by_fda(A,fast=True,inplace=False):
+    m,n = np.shape(A)
+    nanmat = np.isnan(A)
+
+    nan_list = np.flatnonzero(nanmat)
+    known_list = np.flatnonzero(~nanmat)
+    
+    index = np.arange(m*n,dtype=np.int64).reshape((m,n))
+    
+    i = np.hstack( (np.tile(index[1:-1,:].ravel(),3),
+                    np.tile(index[:,1:-1].ravel(),3)
+                    ))
+    j = np.hstack( (index[0:-2,:].ravel(),
+                    index[2:,:].ravel(),
+                    index[1:-1,:].ravel(),
+                    index[:,0:-2].ravel(),
+                    index[:,2:].ravel(),
+                    index[:,1:-1].ravel()
+                    ))
+    data = np.hstack( (np.ones(2*n*(m-2),dtype=np.int64),
+                       -2*np.ones(n*(m-2),dtype=np.int64),
+                       np.ones(2*m*(n-2),dtype=np.int64),
+                       -2*np.ones(m*(n-2),dtype=np.int64)
+                       ))
+    if fast==True:
+        goodrows = np.in1d(i,index[ndi.binary_dilation(nanmat)])
+        i = i[goodrows]
+        j = j[goodrows]
+        data = data[goodrows]
+        del goodrows
+
+    fda = sparse.coo_matrix((data,(i,j)),(m*n,m*n),dtype=np.int8).tocsr()
+    del i,j,data,index
+    
+    rhs = -fda[:,known_list] * A[np.unravel_index(known_list,(m,n))]
+    k = fda[:,np.unique(nan_list)]
+    k = k.nonzero()[0]
+    a = fda[k][:,nan_list]
+    results = sparse.linalg.lsqr(a,rhs[k])[0]
+
+    if inplace:
+        A[np.unravel_index(nan_list,(m,n))] = results
+    else:
+        B = A.copy()
+        B[np.unravel_index(nan_list,(m,n))] = results
+        return B
+        
+    
+#%%    
+    
+def unique_rows(a):
+    a = np.ascontiguousarray(a)
+    unique_a = np.unique(a.view([('', a.dtype)]*a.shape[1]))
+    return unique_a.view(a.dtype).reshape((unique_a.shape[0], a.shape[1]))
+            
+# At the moment, only 4 neighbors are supported.
+def inpaint_nans_by_springs(A,inplace=False,neighbors=4):
+
+    m,n = np.shape(A)
+    nanmat = np.isnan(A)
+
+    nan_list = np.flatnonzero(nanmat)
+    known_list = np.flatnonzero(~nanmat)
+    
+    r,c = np.unravel_index(nan_list,(m,n))
+    
+    num_neighbors = neighbors
+    neighbors = np.array([[0,1],[0,-1],[-1,0],[1,0]]) #r,l,u,d
+
+    neighbors = np.vstack([np.vstack((r+i[0], c+i[1])).T for i in neighbors])
+    del r,c
+    
+    springs = np.tile(nan_list,num_neighbors)
+    good_rows = (np.all(neighbors>=0,1)) & (neighbors[:,0]<m) & (neighbors[:,1]<n)
+    
+    neighbors = np.ravel_multi_index((neighbors[good_rows,0],neighbors[good_rows,1]),(m,n))
+    springs = springs[good_rows]
+    
+    springs = np.vstack((springs,neighbors)).T
+    del neighbors,good_rows
+    
+    springs = np.sort(springs,axis=1)
+    springs = unique_rows(springs)
+    
+    n_springs = np.shape(springs)[0]
+    
+    i = np.tile(np.arange(n_springs),2)
+    springs = springs.T.ravel()
+    data = np.hstack((np.ones(n_springs,dtype=np.int8),-1*np.ones(n_springs,dtype=np.int8)))
+    springs = sparse.coo_matrix((data,(i,springs)),(n_springs,m*n),dtype=np.int8).tocsr()
+    del i,data
+    
+    rhs = -springs[:,known_list] * A[np.unravel_index(known_list,(m,n))]
+    results = sparse.linalg.lsqr(springs[:,nan_list],rhs)[0]       
+
+    if inplace:
+        A[np.unravel_index(nan_list,(m,n))] = results
+    else:
+        B = A.copy()
+        B[np.unravel_index(nan_list,(m,n))] = results
+        return B
+#%%
+#S = slope(Z,src.transform[0])   
+#A = aspect(Z)    
+#H = hillshade(Z,cellsize=src.transform[0],z_factor=1)
+#plt.imshow(H,cmap='gray',vmin=0,vmax=255,aspect='equal')
 
 #%%
-S = slope(Z,src.transform[0])   
-A = aspect(Z)    
-H = hillshade(Z,src.transform[0],z_factor=20)
-plt.imshow(H,cmap='gray',vmin=0,vmax=1)
+#H = multiple_illumination(Z,cellsize=src.transform[0],z_factor=1,zeniths=2,azimuths=3);
+#plt.imshow(H,cmap='gray',aspect='equal')
 
 #%%
-H = multiple_illumination(Z,cellsize=src.transform[0],z_factor=1,zeniths=2,azimuths=3);
-plt.imshow(H,cmap='gray_r',aspect='equal')
+#P = pssm(Z,cellsize=src.transform[0],reverse=True)
+#plt.imshow(P,aspect='equal')
 
 #%%
-P = pssm(Z,cellsize=src.transform[0],reverse=True)
-plt.imshow(P,aspect='equal')
 
-#%%
-# zvalue = 1/((np.pi / 180) * cosd(lat)*(sqrt(numer/denom)));
+
