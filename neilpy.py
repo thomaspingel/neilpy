@@ -21,9 +21,9 @@ from scipy import sparse
 
 #%%
 
-#with rasterio.open('sample_dem.tif') as src:
-#    Z = src.read(1)
-#    Zt = src.transform
+with rasterio.open('sample_dem.tif') as src:
+    Z = src.read(1)
+    Zt = src.transform
     
 #%% Raster visualization functions
     
@@ -122,7 +122,63 @@ def z_factor(latitude):
     denom=(a*np.cos(latitude))**2 + (b*np.sin(latitude))**2;
     z_factor = 1 / (np.pi / 180 * np.cos(latitude) * np.sqrt(numer/denom))
     return z_factor
+
+# This function returns positive openness.  To calculate negative openness,
+# call with -Z.
+def openness(Z,cellsize,lookup_pixels):
+
+    nrows, ncols = np.shape(Z)
+        
+    # neighbor directions are clockwise from top left
+    neighbors = np.arange(8)    
     
+    # Define a (fairly large) 3D matrix to hold the minimum angle for each pixel
+    # for each of 8 directions
+    opn = np.Inf * np.ones((8,nrows,ncols))
+    
+    # Define an array to calculate distances to neighboring pixels
+    dlist = np.array([np.sqrt(2),1])
+
+    # Calculate minimum angles        
+    for this_distance in np.arange(1,lookup_pixels+1):
+        for direction in neighbors:
+            # Map distance to this pixel:
+            dist = cellsize * dlist[np.mod(direction,2)]
+            # Angle is the arctan of the difference in elevations, divided my distance
+            this_angle = 90.0 - np.rad2deg(np.arctan((ashift(Z,direction,lookup_pixels)-Z)/dist))
+            # Make the replacement
+            this_layer = opn[direction,:,:]
+            where_smaller = this_angle < opn[direction,:,:]
+            this_layer[where_smaller] = this_angle[where_smaller]
+            
+            opn[direction,:,:] = this_layer
+
+    # Openness is definted as the mean of the minimum angles of all 8 neighbors        
+    return np.mean(opn,0)
+    
+# ashift pulls a copy of the raster shifted.  0 shifts upper-left to lower right
+# 1 shifts top-to-bottom, etc.  Clockwise from upper left.
+def ashift(surface,direction,n=1):
+    surface = surface.copy()
+    if direction==0:
+        surface[n:,n:] = surface[0:-n,0:-n]
+    elif direction==1:
+        surface[n:,:] = surface[0:-n,:]
+    elif direction==2:
+        surface[n:,0:-n] = surface[0:-n,n:]
+    elif direction==3:
+        surface[:,0:-n] = surface[:,n:]
+    elif direction==4:
+        surface[0:-n,0:-n] = surface[n:,n:]
+    elif direction==5:
+        surface[0:-n,:] = surface[n:,:]
+    elif direction==6:
+        surface[0:-n,n:] = surface[n:,0:-n]
+    elif direction==7:
+        surface[:,n:] = surface[:,0:-n]
+    return surface
+
+
 #%% Lidar routines
 """
 References:
@@ -397,6 +453,53 @@ def inpaint_nans_by_springs(A,inplace=False,neighbors=4):
         B = A.copy()
         B[np.unravel_index(nan_list,(m,n))] = results
         return B
+    
+    
+    
+#%%
+        
+# TODO: add SMRF, add GEOMORPHONS, SWISS SHADING, more INTERPOlATORS
+
+bc = np.zeros(np.shape(Z),dtype=np.uint32)
+f = np.array([1],dtype=np.uint32)
+for i in range(8):
+    print(i)
+    O = openness(Z,Zt[0],3,neighbors=np.array([i])) - openness(-Z,Zt[0],3,neighbors=np.array([i]))
+
+#%%
+def openness(Z,cellsize,lookup_pixels,neighbors=np.arange(8)):
+
+    nrows, ncols = np.shape(Z)
+        
+    # neighbor directions are clockwise from top left,starting at zero
+    # neighbors = np.arange(8)   
+    
+    # Define a (fairly large) 3D matrix to hold the minimum angle for each pixel
+    # for each of 8 directions
+    opn = np.Inf * np.ones((len(neighbors),nrows,ncols))
+    print(np.shape(opn))
+    
+    # Define an array to calculate distances to neighboring pixels
+    dlist = np.array([np.sqrt(2),1])
+
+    # Calculate minimum angles        
+    for this_distance in np.arange(1,lookup_pixels+1):
+        for direction in neighbors:
+            # Map distance to this pixel:
+            dist = cellsize * dlist[np.mod(direction,2)]
+            # Angle is the arctan of the difference in elevations, divided my distance
+            this_angle = 90.0 - np.rad2deg(np.arctan((ashift(Z,direction,lookup_pixels)-Z)/dist))
+            # Make the replacement
+            idx = np.nonzero(neighbors==direction)[0][0]
+            this_layer = opn[idx,:,:]
+            where_smaller = this_angle < opn[idx,:,:]
+            this_layer[where_smaller] = this_angle[where_smaller]
+            
+            opn[idx,:,:] = this_layer
+
+    # Openness is definted as the mean of the minimum angles of all 8 neighbors        
+    return np.mean(opn,0)
+
 #%%
 #S = slope(Z,src.transform[0])   
 #A = aspect(Z)    
