@@ -433,7 +433,7 @@ def ashift(surface,direction,n=1):
 
 #%%
 
-def openness(Z,cellsize,lookup_pixels,neighbors=np.arange(8)):
+def openness(Z,cellsize=1,lookup_pixels=1,neighbors=np.arange(8)):
 
     nrows, ncols = np.shape(Z)
         
@@ -441,29 +441,29 @@ def openness(Z,cellsize,lookup_pixels,neighbors=np.arange(8)):
     # neighbors = np.arange(8)   
     
     # Define a (fairly large) 3D matrix to hold the minimum angle for each pixel
-    # for each of 8 directions
+    # for each of the requested directions (usually 8)
     opn = np.Inf * np.ones((len(neighbors),nrows,ncols))
     
     # Define an array to calculate distances to neighboring pixels
     dlist = np.array([np.sqrt(2),1])
 
     # Calculate minimum angles        
-    for this_distance in np.arange(1,lookup_pixels+1):
-        for direction in neighbors:
+    for L in np.arange(lookup_pixels)+1:
+        for i,direction in enumerate(neighbors):
             # Map distance to this pixel:
-            dist = cellsize * dlist[np.mod(direction,2)]
-            # Angle is the arctan of the difference in elevations, divided my distance
-            this_angle = 90.0 - np.rad2deg(np.arctan((ashift(Z,direction,lookup_pixels)-Z)/dist))
-            # Make the replacement
-            idx = np.nonzero(neighbors==direction)[0][0]
-            this_layer = opn[idx,:,:]
-            where_smaller = this_angle < opn[idx,:,:]
-            this_layer[where_smaller] = this_angle[where_smaller]
-            
-            opn[idx,:,:] = this_layer
+            dist = dlist[direction % 2]
+            dist = cellsize * L * dist
+            # Angle is the arctan of the difference in elevations, divided by distance
+            these_angles = (np.pi/2) - np.arctan((ashift(Z,direction,L)-Z)/dist)
+            this_layer = opn[i,:,:]
+            this_layer[these_angles < this_layer] = these_angles[these_angles < this_layer]
+            opn[i,:,:] = this_layer
 
     # Openness is definted as the mean of the minimum angles of all 8 neighbors        
-    return np.mean(opn,0)
+    return np.rad2deg(np.mean(opn,0))
+
+
+
 
 #%%
     
@@ -479,7 +479,7 @@ def openness(Z,cellsize,lookup_pixels,neighbors=np.arange(8)):
 # to decimal as it progresses.  Upper left pixel is the least significant
 # digit, left pixel is the most significant pixel.
     
-def ternary_pattern_from_openness(Z,cellsize,lookup_pixels,threshold_angle=1):
+def ternary_pattern_from_openness(Z,cellsize=1,lookup_pixels=1,threshold_angle=0):
     pows = 3**np.arange(8)
     #bc = np.zeros(np.shape(Z),dtype=np.uint32)
     tc = np.zeros(np.shape(Z),dtype=np.uint16)
@@ -487,7 +487,7 @@ def ternary_pattern_from_openness(Z,cellsize,lookup_pixels,threshold_angle=1):
     for i in range(8):
         O = openness(Z,cellsize,lookup_pixels,neighbors=np.array([i]))
         O = O - openness(-Z,cellsize,lookup_pixels,neighbors=np.array([i]))
-        tempMat = np.ones(np.shape(bc),dtype=np.uint32);
+        tempMat = np.ones(np.shape(tc),dtype=np.uint32)
         tempMat[O > threshold_angle] = 2;
         tempMat[O < -threshold_angle] = 0;
     
@@ -535,11 +535,34 @@ def get_all_equivalents(values = np.arange(3**8)):
     values = np.array(values)
     return values
 
+
+#%%
+def get_geomorphon(terrain_code,method='strict'):
+    geomorphon = None
+    lookup_table = np.zeros(3**8,np.uint16)
+    if method=='strict':
+        lookup_table[3280] = 1  # Flat
+        lookup_table[0] = 2     # Peak
+        lookup_table[82] = 3    # Ridge
+        lookup_table[121] = 4   # Shoulder
+        lookup_table[26] = 5    # Spur
+        lookup_table[160] = 6   # Slope
+        lookup_table[242] = 7   # Hollow
+        lookup_table[3293] = 8  # Footslope
+        lookup_table[4346] = 9  # Valley
+        lookup_table[6560] = 10 # Pit
+        geomorphon = lookup_table[terrain_code].astype(np.uint8)
+    return geomorphon
+    
 #%%
 
+#
+terrain_code = ternary_pattern_from_openness(Z,cellsize=Zt[0],lookup_pixels=20,threshold_angle=1)
+lookup_table= get_all_equivalents()
+# https://stackoverflow.com/questions/14448763/is-there-a-convenient-way-to-apply-a-lookup-table-to-a-large-array-in-numpy
 
-tc = ternary_pattern_from_openness(Z,cellsize=Zt[0],lookup_pixels=20,threshold_angle=1)
-lut= get
+terrain_code = lookup_table[terrain_code]
+geomorphon = get_geomorphon(terrain_code)
 #%%
 #S = slope(Z,src.transform[0])   
 #A = aspect(Z)    
