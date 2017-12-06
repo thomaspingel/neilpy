@@ -538,24 +538,60 @@ def get_all_equivalents(values = np.arange(3**8)):
 
 #%%
 def get_geomorphon(terrain_code,method='strict'):
-    geomorphon = None
-    lookup_table = np.zeros(3**8,np.uint16)
-    if method=='strict':
-        lookup_table[3280] = 1  # Flat
-        lookup_table[0] = 2     # Peak
-        lookup_table[82] = 3    # Ridge
-        lookup_table[121] = 4   # Shoulder
-        lookup_table[26] = 5    # Spur
-        lookup_table[160] = 6   # Slope
-        lookup_table[242] = 7   # Hollow
-        lookup_table[3293] = 8  # Footslope
-        lookup_table[4346] = 9  # Valley
-        lookup_table[6560] = 10 # Pit
-        geomorphon = lookup_table[terrain_code].astype(np.uint8)
-    return geomorphon
-    
+    method_options = ['strict','loose']
+    if method not in method_options:    
+        geomorphon = None
+        lookup_table = np.zeros(3**8,np.uint8)
+        if method=='strict':
+            lookup_table[3280] = 1  # Flat
+            lookup_table[0] = 2     # Peak
+            lookup_table[82] = 3    # Ridge
+            lookup_table[121] = 4   # Shoulder
+            lookup_table[26] = 5    # Spur
+            lookup_table[160] = 6   # Slope
+            lookup_table[242] = 7   # Hollow
+            lookup_table[3293] = 8  # Footslope
+            lookup_table[4346] = 9  # Valley
+            lookup_table[6560] = 10 # Pit
+        elif method=='loose':
+            lookup_table = np.zeros(3**8,np.uint8)
+            strict_table = np.zeros((9,9),dtype=np.uint8)
+            strict_table[0,:]   = [1,1,1,8,8,9,9,9,10]
+            strict_table[1,:8]  = [1,1,8,8,8,9,9,9]
+            strict_table[1,:7]  = [1,4,6,6,7,7,9]
+            strict_table[1,:6]  = [4,4,6,6,6,7]
+            strict_table[1,:5]  = [4,4,5,6,6]
+            strict_table[1,:4]  = [3,3,5,5]
+            strict_table[1,:3]  = [3,3,3]
+            strict_table[1,:2]  = [3,3]
+            strict_table[1,:1]  = [3]
+            for i in range(3**8):
+                base = int2base(i,3)
+                r,c = base.count('0'), base.count('2')
+                lookup_table[i] = strict_table[r,c]
+            geomorphon = lookup_table[terrain_code].astype(np.uint8)
+        return geomorphon
+        
 #%%
+lookup_table = np.zeros(3**8,np.uint8)
+strict_table = np.zeros((9,9),dtype=np.uint8)
+strict_table[0,:]   = [1,1,1,8,8,9,9,9,10]
+strict_table[1,:8]  = [1,1,8,8,8,9,9,9]
+strict_table[1,:7]  = [1,4,6,6,7,7,9]
+strict_table[1,:6]  = [4,4,6,6,6,7]
+strict_table[1,:5]  = [4,4,5,6,6]
+strict_table[1,:4]  = [3,3,5,5]
+strict_table[1,:3]  = [3,3,3]
+strict_table[1,:2]  = [3,3]
+strict_table[1,:1]  = [3]
+for i in range(3**8):
+    base = int2base(i,3)
+    r,c = base.count('0'), base.count('2')
+    lookup_table[i] = strict_table[r,c]
+    
 
+
+#%%
 #
 terrain_code = ternary_pattern_from_openness(Z,cellsize=Zt[0],lookup_pixels=20,threshold_angle=1)
 lookup_table= get_all_equivalents()
