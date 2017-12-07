@@ -17,6 +17,7 @@ from scipy import sparse
 from scipy import linalg
 from scipy.signal import convolve2d
 from scipy import interpolate
+from PIL import Image
 
 #%%
 
@@ -537,10 +538,12 @@ def get_all_equivalents(values = np.arange(3**8)):
 
 
 #%%
-def get_geomorphon(terrain_code,method='strict'):
+def get_geomorphon(terrain_code,method='loose'):
+    geomorphon = None
     method_options = ['strict','loose']
     if method not in method_options:    
-        geomorphon = None
+        print('method should be one of',method_options)
+    else:
         lookup_table = np.zeros(3**8,np.uint8)
         if method=='strict':
             lookup_table[3280] = 1  # Flat
@@ -556,40 +559,65 @@ def get_geomorphon(terrain_code,method='strict'):
         elif method=='loose':
             lookup_table = np.zeros(3**8,np.uint8)
             strict_table = np.zeros((9,9),dtype=np.uint8)
-            strict_table[0,:]   = [1,1,1,8,8,9,9,9,10]
+            strict_table[0,:]   = [1,1,1,8,8,9,9,9,10] 
             strict_table[1,:8]  = [1,1,8,8,8,9,9,9]
-            strict_table[1,:7]  = [1,4,6,6,7,7,9]
-            strict_table[1,:6]  = [4,4,6,6,6,7]
-            strict_table[1,:5]  = [4,4,5,6,6]
-            strict_table[1,:4]  = [3,3,5,5]
-            strict_table[1,:3]  = [3,3,3]
-            strict_table[1,:2]  = [3,3]
-            strict_table[1,:1]  = [3]
+            strict_table[2,:7]  = [1,4,6,6,7,7,9]
+            strict_table[3,:6]  = [4,4,6,6,6,7]
+            strict_table[4,:5]  = [4,4,5,6,6]
+            strict_table[5,:4]  = [3,3,5,5]
+            strict_table[6,:3]  = [3,3,3]
+            strict_table[7,:2]  = [3,3]
+            strict_table[8,:1]  = [3]
             for i in range(3**8):
                 base = int2base(i,3)
                 r,c = base.count('0'), base.count('2')
                 lookup_table[i] = strict_table[r,c]
-            geomorphon = lookup_table[terrain_code].astype(np.uint8)
-        return geomorphon
-        
+    geomorphon = lookup_table[terrain_code]
+    return geomorphon
 #%%
 lookup_table = np.zeros(3**8,np.uint8)
 strict_table = np.zeros((9,9),dtype=np.uint8)
-strict_table[0,:]   = [1,1,1,8,8,9,9,9,10]
+strict_table[0,:]   = [1,1,1,8,8,9,9,9,10] 
 strict_table[1,:8]  = [1,1,8,8,8,9,9,9]
-strict_table[1,:7]  = [1,4,6,6,7,7,9]
-strict_table[1,:6]  = [4,4,6,6,6,7]
-strict_table[1,:5]  = [4,4,5,6,6]
-strict_table[1,:4]  = [3,3,5,5]
-strict_table[1,:3]  = [3,3,3]
-strict_table[1,:2]  = [3,3]
-strict_table[1,:1]  = [3]
+strict_table[2,:7]  = [1,4,6,6,7,7,9]
+strict_table[3,:6]  = [4,4,6,6,6,7]
+strict_table[4,:5]  = [4,4,5,6,6]
+strict_table[5,:4]  = [3,3,5,5]
+strict_table[6,:3]  = [3,3,3]
+strict_table[7,:2]  = [3,3]
+strict_table[8,:1]  = [3]
 for i in range(3**8):
     base = int2base(i,3)
     r,c = base.count('0'), base.count('2')
     lookup_table[i] = strict_table[r,c]
+                
+#%%
+def geomorphon_cmap():
+    lut = [255,255,255, \
+    224,224,224, \
+    34,21,15, \
+    80,41,43, \
+    102,66,56, \
+    231,206,51, \
+    231,230,64, \
+    178,200,37, \
+    135,181,108, \
+    53,52,132, \
+    14,13,11]
+    return lut
     
-
+#%%
+# http://www.perrygeo.com/python-affine-transforms.html
+def write_worldfile(affine_matrix,output_file):
+    outfile = 'test.pgw'
+    x_ul_center,y_ul_center = affine_matrix * (.5,.5)
+    pixel_width, row_rotation = affine_matrix[0],affine_matrix[1]
+    pixel_height, col_rotation = affine_matrix[4],affine_matrix[3]
+    world_data = [pixel_width,col_rotation,row_rotation,pixel_height,x_ul_center,y_ul_center]
+    np.savetxt(output_file,np.array([world_data]).reshape((6,1)),fmt='%0.10f')
+    
+#%%
+    
 
 #%%
 #
@@ -598,7 +626,12 @@ lookup_table= get_all_equivalents()
 # https://stackoverflow.com/questions/14448763/is-there-a-convenient-way-to-apply-a-lookup-table-to-a-large-array-in-numpy
 
 terrain_code = lookup_table[terrain_code]
-geomorphon = get_geomorphon(terrain_code)
+geomorphon = get_geomorphon(terrain_code,method='loose')
+im = Image.fromarray(geomorphon,mode='L')
+im.putpalette(geomorphon_cmap())
+plt.imshow(im)
+im.save('sample_dem_geomorphon.png')
+write_worldfile(Zt,'sample_dem_geomorphon.pgw')
 #%%
 #S = slope(Z,src.transform[0])   
 #A = aspect(Z)    
