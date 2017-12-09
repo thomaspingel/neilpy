@@ -21,9 +21,9 @@ from PIL import Image
 
 #%%
 
-with rasterio.open('sample_dem.tif') as src:
-    Z = src.read(1)
-    Zt = src.transform
+#with rasterio.open('sample_dem.tif') as src:
+#    Z = src.read(1)
+#    Zt = src.transform
     
 #%% Raster visualization functions
     
@@ -480,14 +480,17 @@ def openness(Z,cellsize=1,lookup_pixels=1,neighbors=np.arange(8)):
 # to decimal as it progresses.  Upper left pixel is the least significant
 # digit, left pixel is the most significant pixel.
     
-def ternary_pattern_from_openness(Z,cellsize=1,lookup_pixels=1,threshold_angle=0):
+def ternary_pattern_from_openness(Z,cellsize=1,lookup_pixels=1,threshold_angle=0,use_negative_openness=True):
     pows = 3**np.arange(8)
     #bc = np.zeros(np.shape(Z),dtype=np.uint32)
     tc = np.zeros(np.shape(Z),dtype=np.uint16)
     f = 1
     for i in range(8):
         O = openness(Z,cellsize,lookup_pixels,neighbors=np.array([i]))
-        O = O - openness(-Z,cellsize,lookup_pixels,neighbors=np.array([i]))
+        if use_negative_openness:
+            O = O - openness(-Z,cellsize,lookup_pixels,neighbors=np.array([i]))
+        else:
+            O = O - 90.0
         tempMat = np.ones(np.shape(tc),dtype=np.uint32)
         tempMat[O > threshold_angle] = 2;
         tempMat[O < -threshold_angle] = 0;
@@ -503,6 +506,9 @@ def ternary_pattern_from_openness(Z,cellsize=1,lookup_pixels=1,threshold_angle=0
 
 
 #%%
+# This is a general purpose function that coverts a base 10 integer to a string
+# representation of a base b number.
+# e.g. 5,2 -> '00000101'
 # Adapted from https://stackoverflow.com/questions/2267362/how-to-convert-an-integer-in-any-base-to-a-string
 def int2base(x,b,alphabet='0123456789abcdefghijklmnopqrstuvwxyz',min_digits=8):
     rets=''
@@ -519,26 +525,44 @@ def int2base(x,b,alphabet='0123456789abcdefghijklmnopqrstuvwxyz',min_digits=8):
 
 
 #%%
-    
-def get_all_equivalents(values = np.arange(3**8)):
-    def get_equivalent(i):
-        s = int2base(i,3)
-        min_val = int(s,3)
-        for j in range(1,16):
-            s = s[-1] + s[:7]
-            min_val = min(min_val,int(s,3))
-            if j==7:
-                s = s[::-1]
-        return min_val
-    
-    for i in values:
-        values[i] = get_equivalent(i)
-    values = np.array(values)
-    return values
+# A helper function that generates a lookup table mapping each 8-digit string
+# code to its rotational and reflectional equivalents, and return back the 
+# base 10 integer that corresponds to the minimum of these.
+# For instance, going from top left to left (clockwise):
+# 0 0 0        2 1 0           0 1 2
+# 1   2   ->   2   0      ->   0   2
+# 2 2 2        2 2 0           0 2 2
+# Original    90 degree        reflection
+# '00022221'  '21000222'      '01222200'    : String codes (Base 3 representation)
+# 241        5129             1449          : Terrain code (Base 10 Representation)
+#
+# Lowest Equivalent: 161, '00012222'
 
-
+def get_lowest_equivalent(terrain_code):
+    s = int2base(terrain_code,3)
+    min_val = int(s,3)
+    for j in range(1,16):
+        s = s[-1] + s[:7]
+        min_val = min(min_val,int(s,3))
+        if j==7:
+            s = s[::-1]
+    return min_val
+    
 #%%
-def get_geomorphon(terrain_code,method='loose'):
+    
+# Applies either a strict or loose lookup table to a terrain code to transform
+# into a standardized list of terrain types.  Zero is "undefined".
+# 
+# Strict uses only the eight neighbors, and must match precisely.  For instance,
+# to be "flat", ALL of the eight neighbors must have been classified as equal
+# within the tolerance value (i.e., all are "1").
+#
+# In contrast, the loose method counts the number of cells higher, and the 
+# number of cells lower, so a "flat" area is any where the  number of cells
+# with a higher value is three or less, and the number of cells with a lower
+# value is also three of less, AND the total number of higher or lower 
+# is not more than 3 (i.e., at least 5 are strictly "flat")
+def terrain_code_to_geomorphon(terrain_code,method='loose'):
     geomorphon = None
     method_options = ['strict','loose']
     if method not in method_options:    
@@ -559,10 +583,12 @@ def get_geomorphon(terrain_code,method='loose'):
         elif method=='loose':
             lookup_table = np.zeros(3**8,np.uint8)
             strict_table = np.zeros((9,9),dtype=np.uint8)
-            strict_table[0,:]   = [1,1,1,8,8,9,9,9,10] 
-            strict_table[1,:8]  = [1,1,8,8,8,9,9,9]
-            strict_table[2,:7]  = [1,4,6,6,7,7,9]
-            strict_table[3,:6]  = [4,4,6,6,6,7]
+            #                      (Fig 4., Jasiewicz and Stepinksi, 2013)
+            #                      Number of cells higher
+            strict_table[0,:]   = [1,1,1,8,8,9,9,9,10] # 
+            strict_table[1,:8]  = [1,1,8,8,8,9,9,9]    # Num
+            strict_table[2,:7]  = [1,4,6,6,7,7,9]      # Cells
+            strict_table[3,:6]  = [4,4,6,6,6,7]        # Lower
             strict_table[4,:5]  = [4,4,5,6,6]
             strict_table[5,:4]  = [3,3,5,5]
             strict_table[6,:3]  = [3,3,3]
@@ -574,22 +600,6 @@ def get_geomorphon(terrain_code,method='loose'):
                 lookup_table[i] = strict_table[r,c]
     geomorphon = lookup_table[terrain_code]
     return geomorphon
-#%%
-lookup_table = np.zeros(3**8,np.uint8)
-strict_table = np.zeros((9,9),dtype=np.uint8)
-strict_table[0,:]   = [1,1,1,8,8,9,9,9,10] 
-strict_table[1,:8]  = [1,1,8,8,8,9,9,9]
-strict_table[2,:7]  = [1,4,6,6,7,7,9]
-strict_table[3,:6]  = [4,4,6,6,6,7]
-strict_table[4,:5]  = [4,4,5,6,6]
-strict_table[5,:4]  = [3,3,5,5]
-strict_table[6,:3]  = [3,3,3]
-strict_table[7,:2]  = [3,3]
-strict_table[8,:1]  = [3]
-for i in range(3**8):
-    base = int2base(i,3)
-    r,c = base.count('0'), base.count('2')
-    lookup_table[i] = strict_table[r,c]
                 
 #%%
 def geomorphon_cmap():
@@ -616,36 +626,27 @@ def write_worldfile(affine_matrix,output_file):
     world_data = [pixel_width,col_rotation,row_rotation,pixel_height,x_ul_center,y_ul_center]
     np.savetxt(output_file,np.array([world_data]).reshape((6,1)),fmt='%0.10f')
     
-#%%
-    
 
 #%%
-#
-terrain_code = ternary_pattern_from_openness(Z,cellsize=Zt[0],lookup_pixels=20,threshold_angle=1)
-lookup_table= get_all_equivalents()
+
 # https://stackoverflow.com/questions/14448763/is-there-a-convenient-way-to-apply-a-lookup-table-to-a-large-array-in-numpy
-
-terrain_code = lookup_table[terrain_code]
-geomorphon = get_geomorphon(terrain_code,method='loose')
-im = Image.fromarray(geomorphon,mode='L')
-im.putpalette(geomorphon_cmap())
-plt.imshow(im)
-im.save('sample_dem_geomorphon.png')
-write_worldfile(Zt,'sample_dem_geomorphon.pgw')
-#%%
-#S = slope(Z,src.transform[0])   
-#A = aspect(Z)    
-#H = hillshade(Z,cellsize=src.transform[0],z_factor=1)
-#plt.imshow(H,cmap='gray',vmin=0,vmax=255,aspect='equal')
-
-#%%
-#H = multiple_illumination(Z,cellsize=src.transform[0],z_factor=1,zeniths=2,azimuths=3);
-#plt.imshow(H,cmap='gray',aspect='equal')
-
-#%%
-#P = pssm(Z,cellsize=src.transform[0],reverse=True)
-#plt.imshow(P,aspect='equal')
-
-#%%
-
+def get_geomorphons(Z,cellsize=1,lookup_pixels=5,threshold_angle=1,use_negative_openness=True,method='loose',outfile=None,out_transform=None):
+    terrain_code = ternary_pattern_from_openness(Z,cellsize=cellsize, \
+                                                 lookup_pixels=lookup_pixels, \
+                                                 threshold_angle=threshold_angle, \
+                                                 use_negative_openness=use_negative_openness)
+    lookup_table = np.array([get_lowest_equivalent(x) for x in np.arange(3**8)])
+    terrain_code = lookup_table[terrain_code]
+    geomorphon = terrain_code_to_geomorphon(terrain_code,method='loose')
+    
+    if not outfile==None:
+        im = Image.fromarray(geomorphon,mode='L')
+        im.putpalette(geomorphon_cmap())
+        im.save(outfile)
+        if not out_transform==None:
+            write_worldfile(out_transform,outfile[:-3] + 'pgw')
+        del im
+        
+    
+    
 
