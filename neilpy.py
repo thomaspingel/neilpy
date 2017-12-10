@@ -18,13 +18,9 @@ from scipy import linalg
 from scipy.signal import convolve2d
 from scipy import interpolate
 from PIL import Image
+from skimage.util import apply_parallel
 
-#%%
 
-#with rasterio.open('sample_dem.tif') as src:
-#    Z = src.read(1)
-#    Zt = src.transform
-    
 #%% Raster visualization functions
     
 # http://edndoc.esri.com/arcobjects/9.2/net/shared/geoprocessing/spatial_analyst_tools/how_hillshade_works.htm
@@ -646,7 +642,40 @@ def get_geomorphons(Z,cellsize=1,lookup_pixels=5,threshold_angle=1,use_negative_
         if not out_transform==None:
             write_worldfile(out_transform,outfile[:-3] + 'pgw')
         del im
-        
+
+    return geomorphon
+
+#%%
     
+def get_geomorphon_from_openness(Z,cellsize=1,lookup_pixels=1,threshold_angle=1):
+#    cellsize = cell
+#    lookup_pixels = 10
+#    threshold_angle = 1
+    #
+    num_pos = np.zeros(np.shape(Z),dtype=np.uint8)
+    num_neg = np.zeros(np.shape(Z),dtype=np.uint8)
     
+    for i in range(8):
+        O = openness(Z,cellsize,lookup_pixels,neighbors=np.array([i]))
+        O = O - openness(-Z,cellsize,lookup_pixels,neighbors=np.array([i]))
+        num_pos[O > threshold_angle] = num_pos[O > threshold_angle] + 1
+        num_neg[O < -threshold_angle] = num_neg[O < -threshold_angle] + 1
+    
+    lookup_table = np.zeros((9,9),dtype=np.uint8)
+    #                      Number of cells higher
+    lookup_table[0,:]   = [1,1,1,8,8,9,9,9,10] # 
+    lookup_table[1,:8]  = [1,1,8,8,8,9,9,9]    # Num
+    lookup_table[2,:7]  = [1,4,6,6,7,7,9]      # Cells
+    lookup_table[3,:6]  = [4,4,6,6,6,7]        # Lower
+    lookup_table[4,:5]  = [4,4,5,6,6]
+    lookup_table[5,:4]  = [3,3,5,5]
+    lookup_table[6,:3]  = [3,3,3]
+    lookup_table[7,:2]  = [3,3]
+    lookup_table[8,:1]  = [3]    
+    
+    geomorphons = lookup_table[num_neg.ravel(),num_pos.ravel()].reshape(np.shape(Z))
+    
+    return geomorphons
+
+#%%
 
