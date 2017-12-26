@@ -38,7 +38,7 @@ G = apply_parallel(gm_wrap,Z.copy(),1000,lookup_pixels)
 now = time.time()
 print(now-then)
 
-
+#%%
 
 im = Image.fromarray(G,mode='L')
 im.putpalette(geomorphon_cmap())
@@ -47,3 +47,5 @@ plt.show()
 
 
 im.save('../neilpy_data/poland_30m_geomorphons.png')
+#%%
+write_worldfile(Zt,'../neilpy_data/poland_30m_geomorphons.pgw')
