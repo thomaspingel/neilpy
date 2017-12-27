@@ -1,0 +1,1 @@
+An aggregation of methods and functions for lidar and photogrammetric point cloud processing. This kit is designed for use in the Near Earth Imaging Lab, but contributions and uses outside of this are welcome.

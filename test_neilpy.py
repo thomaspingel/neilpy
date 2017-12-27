@@ -5,6 +5,7 @@ Created on Sat Dec  9 20:38:51 2017
 @author: Thomas Pingel
 """
 import time
+import matplotlib.pyplot as plt
 #%%
 
 with rasterio.open('sample_dem.tif') as src:
@@ -49,3 +50,7 @@ plt.show()
 im.save('../neilpy_data/poland_30m_geomorphons.png')
 #%%
 write_worldfile(Zt,'../neilpy_data/poland_30m_geomorphons.pgw')
+
+#%%
+
+

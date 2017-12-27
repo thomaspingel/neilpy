@@ -35,11 +35,19 @@ from scipy.signal import convolve2d
 from scipy import interpolate
 from PIL import Image
 from skimage.util import apply_parallel
+from skimage.morphology import disk
 
 
 #%% Raster visualization functions
     
 # http://edndoc.esri.com/arcobjects/9.2/net/shared/geoprocessing/spatial_analyst_tools/how_hillshade_works.htm
+# esri_slope is intended to be a perfect mimic of ESRI's published slope 
+# calculation routine.  This uses a generic filter to process the image, which
+# is something of a slow, if intuitive approach.  It would be a lot faster
+# some parallel processing added.  One could expant this to include an ESRI
+# aspect calculation as well, though in practice I use the two routines
+# immediately below.
+
 def esri_slope(Z,cellsize=1,z_factor=1,return_as='degrees'):    
     def slope_filter(n):
         n = n.reshape((3,3)) # Added to accommodate filter, not strictly necessary.
@@ -58,6 +66,10 @@ def esri_slope(Z,cellsize=1,z_factor=1,return_as='degrees'):
     return S
         
 
+
+# This is a more efficient method of calculating slope using numpy's gradient 
+# routine.  Percent slope is the default, and will return a value where 1 is a
+# 100 percent slope.
 def slope(Z,cellsize=1,z_factor=1,return_as='degrees'):
     if return_as not in ['degrees','radians','percent']:
         print('return_as',return_as,'is not supported.')
@@ -71,7 +83,8 @@ def slope(Z,cellsize=1,z_factor=1,return_as='degrees'):
     return S
 
         
-
+# Similarly this will calculate the aspect using numpy's gradient, either
+# in degrees, or radians.
 def aspect(Z,return_as='degrees',flat_as='nan'):
     if return_as not in ['degrees','radians']:
         print('return_as',return_as,'is not supported.')
@@ -88,6 +101,8 @@ def aspect(Z,return_as='degrees',flat_as='nan'):
         return A
 
 # http://edndoc.esri.com/arcobjects/9.2/net/shared/geoprocessing/spatial_analyst_tools/how_hillshade_works.htm
+# ESRI's hillshade algorithm, but using the numpy versions of slope and aspect
+# given above, so results may differ slightly from ESRI's version.
 def hillshade(Z,cellsize=1,z_factor=1,zenith=45,azimuth=315):
     zenith, azimuth = np.deg2rad((zenith,azimuth))
     S = slope(Z,cellsize=cellsize,z_factor=z_factor,return_as='radians')
@@ -98,7 +113,10 @@ def hillshade(Z,cellsize=1,z_factor=1,zenith=45,azimuth=315):
     H = np.round(H).astype(np.uint8)
     return H
 
-# This could still use some work.
+# The user can specify a range of zeniths and azimuths to calculate a very
+# rudimentary multiple illumination model, where a hillshade is a calculated
+# for each combination, and the maximum illimunation retained.  This is really
+# just a scratch/test function, and not intended for production use.
 def multiple_illumination(Z,cellsize=1,z_factor=1,zeniths=np.array([45]),azimuths=4):
     if np.isscalar(azimuths):
         azimuths = np.arange(0,360,360/azimuths)
@@ -113,6 +131,8 @@ def multiple_illumination(Z,cellsize=1,z_factor=1,zeniths=np.array([45]),azimuth
             H = np.max(H,axis=2)
     return H
 
+# Calculates a Perceptually Scaled Slope Map (PSSM) of the input DEM, and 
+# returns a bone shaded colormapped raster.
 def pssm(Z,cellsize=1,ve=2.3,reverse=False):
     P = slope(Z,cellsize=cellsize,return_as='percent')
     P = np.rad2deg(np.arctan(2.3 *  P))
@@ -124,6 +144,8 @@ def pssm(Z,cellsize=1,ve=2.3,reverse=False):
         P = plt.cm.bone(P)
     return P
 
+# A simple function to calculate a z-factor based on an input latitude to 
+# calculate slopes, etc., on a degree-referenced DEM (e.g., 1 arc second)
 def z_factor(latitude):
     # https://blogs.esri.com/esri/arcgis/2007/06/12/setting-the-z-factor-parameter-correctly/
     latitude = np.deg2rad(latitude)
@@ -260,6 +282,7 @@ def read_las(filename):
 
 # Using scipy's binned statistic would be preferable here, but it doesn't do
 # min/max natively, and is too slow when not cython.
+# It would look like: 
 # Z,xi,yi,binnum = stats.binned_statistic_2d(x,y,z,statistic='min',bins=(x_edge,y_edge))
 def create_dem(x,y,z,resolution=1,bin_type='max',use_binned_statistic=False):
     
@@ -647,6 +670,9 @@ def write_worldfile(affine_matrix,output_file):
 #%%
 
 # https://stackoverflow.com/questions/14448763/is-there-a-convenient-way-to-apply-a-lookup-table-to-a-large-array-in-numpy
+# This was the first function I wrote to do the calculation, but is actually 
+# fairly unnecessary... get_geomorphone_from_openness has fewer steps (but
+# actually doesn't take that much less time to calculate).
 def get_geomorphons(Z,cellsize=1,lookup_pixels=5,threshold_angle=1,use_negative_openness=True,method='loose',outfile=None,out_transform=None):
     terrain_code = ternary_pattern_from_openness(Z,cellsize=cellsize, \
                                                  lookup_pixels=lookup_pixels, \
@@ -667,12 +693,9 @@ def get_geomorphons(Z,cellsize=1,lookup_pixels=5,threshold_angle=1,use_negative_
     return geomorphon
 
 #%%
-    
+# This is the best go-to function for calcluating a geomorhon from an openness
+# calculation.    
 def get_geomorphon_from_openness(Z,cellsize=1,lookup_pixels=1,threshold_angle=1):
-#    cellsize = cell
-#    lookup_pixels = 10
-#    threshold_angle = 1
-    #
     num_pos = np.zeros(np.shape(Z),dtype=np.uint8)
     num_neg = np.zeros(np.shape(Z),dtype=np.uint8)
     
@@ -698,5 +721,110 @@ def get_geomorphon_from_openness(Z,cellsize=1,lookup_pixels=1,threshold_angle=1)
     
     return geomorphons
 
+
+
+#%% The Simple Morphological Filter
+
+def progressive_filter(Z,windows,cellsize=1,slope_threshold=.15):
+    last_surface = Z.copy()
+    elevation_thresholds = slope_threshold * (windows * cellsize)  
+    is_object_cell = np.zeros(np.shape(Z),dtype=np.bool)
+    for i,window in enumerate(windows):
+        elevation_threshold = elevation_thresholds[i]
+        this_surface = ndi.morphology.grey_opening(last_surface,footprint=disk(window)) 
+        is_object_cell = (is_object_cell) | (last_surface - this_surface > elevation_threshold)
+        if i < len(windows) and len(windows)>1:
+            last_surface = this_surface.copy()
+    return is_object_cell
+
 #%%
+    
+
+
+#%%
+def smrf(x,y,z,windows=np.arange(1,6,2),cellsize=1,slope_threshold=.15,elevation_threshold=.5,elevation_scaler=1.25):
+
+    Zmin,t = create_dem(x,y,z,resolution=cellsize,bin_type='min');
+    is_empty_cell = np.isnan(Zmin)
+    Zmin = inpaint_nans_by_fda(Zmin)
+    low_outliers = progressive_filter(-Zmin,np.array([1]),cellsize,slope_threshold=5); 
+    object_cells = progressive_filter(Zmin,windows,cellsize,slope_threshold);
+    
+    # Create a provisional surface
+    Zpro = Zmin
+    del Zmin
+    # For the purposes of returning values to the user, an "object_cell" is
+    # any of these: empty cell, low outlier, object cell
+    object_cells = is_empty_cell | low_outliers | object_cells
+    Zpro[object_cells] = np.nan
+    Zpro = inpaint_nans_by_fda(Zpro)
+    
+    # Use provisional surface to interpolate a height at each x,y point in the
+    # point cloud.  This uses a linear interpolator, where the original SMRF
+    # used a splined cubic interpolator.  Perhaps use RectBivariateSpline instead.
+    col_centers = np.arange(0.5,Zpro.shape[1]+.5)
+    row_centers = np.arange(0.5,Zpro.shape[0]+.5)
+    # x,y = t * (col,row)
+    xi, _ = t * (col_centers, np.zeros(np.shape(col_centers)))
+    _, yi = t * (np.zeros(np.shape(row_centers)), row_centers)
+    f1 = interpolate.RegularGridInterpolator((yi[::-1],xi),np.flipud(Zpro))
+    elevation_values = f1((y,x))
+    
+    # Calculate a slope value for each point.  This is used to apply a some "slop"
+    # to the ground/object ID, since there is more uncertainty on slopes than on
+    # flat areas.
+    gy,gx = np.gradient(Zpro,cellsize)
+    S = np.sqrt(gy**2 + gx**2)
+    del gy,gx
+    f1 = interpolate.RegularGridInterpolator((yi[::-1],xi),np.flipud(S))
+    del S
+    slope_values = f1((y,x))
+    
+    # Use elevation and slope values and thresholds interpolated from the 
+    # provisional surface to classify as object/ground
+    required_value = elevation_threshold + (elevation_scaler * slope_values)
+    is_object_point = np.abs(elevation_values - z) > required_value
+    
+    # Return the provisional surface, affine matrix, raster object cells
+    # and boolean vector identifying object points from point cloud
+    return Zpro,t,object_cells,is_object_point
+
+
+#%%
+x,y,z = df.x.values,df.y.values,df.z.values
+windows = np.arange(1,15,2)
+cellsize= 5
+slope_threshold = .15
+elevation_threshold = .5
+elevation_scaler = 1.25
+
+result = smrf(x,y,z,windows,cellsize,slope_threshold,elevation_threshold,elevation_scaler)
+#%%
+plt.imshow(Zpro)
+
+
+#%%
+values = [f(p[0],p[1])[0][0] for p in zip(row,col)]
+
+#%% progressive_filter
+header, df = read_las('DK22_partial.las')
+Z,t = create_dem(df.x,df.y,df.z,resolution=5,bin_type='min');
+Z = apply_parallel(inpaint_nans_by_springs,Z.copy(),100,10)
+
+
+#%%
+slope_threshold = .15
+windows = np.arange(1,10,2)
+cellsize = 5
+OC = progressive_filter(Z,np.arange(1,10),cellsize=5,slope_threshold=.2)
+plt.imshow(is_object_cell)   
+    
+#%%
+a = np.arange(3) # cols, x
+b = np.arange(3) + 1 # rows, y
+c = np.arange(9).reshape((3,3))
+print(c)
+g = interpolate.RegularGridInterpolator((a,b),c)
+print(g((2,3)))  #col/x "2" and row/y "3"
+
 
