@@ -5,6 +5,22 @@ Created on Fri Dec  1 21:40:01 2017
 @author: Thomas Pingel
 """
 
+'''
+TODO:
+Port over the VIP algorithm.
+Create a routine to build 3D models.
+'''
+
+# For development of packages, see:
+# http://the-hitchhikers-guide-to-packaging.readthedocs.io/en/latest/quickstart.html
+# https://stackoverflow.com/questions/34753206/init-py-cant-find-local-modules
+# https://github.com/BillMills/pythonPackageLesson
+# https://biodata-club.github.io/lessons/python/packages/lesson/
+# http://python-notes.curiousefficiency.org/en/latest/python_concepts/import_traps.html
+
+
+
+
 #%%
 import struct
 import pandas as pd
@@ -613,7 +629,12 @@ def geomorphon_cmap():
     return lut
     
 #%%
-# http://www.perrygeo.com/python-affine-transforms.html
+'''
+This is a helper function to easily write out a text-based worldfile to 
+accompany an image used as raster data.
+Source: http://www.perrygeo.com/python-affine-transforms.html
+'''
+
 def write_worldfile(affine_matrix,output_file):
     outfile = 'test.pgw'
     x_ul_center,y_ul_center = affine_matrix * (.5,.5)
