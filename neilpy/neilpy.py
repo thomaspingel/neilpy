@@ -803,3 +803,43 @@ def smrf(x,y,z,cellsize=1,windows=18,slope_threshold=.15,elevation_threshold=.5,
 
 
 #%%
+'''
+h0 is the height of the neighbor pixel in one direction, relative to the center
+h1 is the height of the pixel on the other size of the center pixel (same dir)
+xdist is the real distance between them (as some neighbors are diagnonal)
+'''
+    
+def triangle_height(h0,h1,x_dist=1):
+    n = np.shape(h0)
+
+    # The area of the triangle is half of the cross product    
+    h0 = np.column_stack((-x_dist*np.ones(n),h0))
+    h1 = np.column_stack(( x_dist*np.ones(n),h1))
+    cp = np.abs(np.cross(h0,h1))
+    
+    # Find the base from the original coords
+    base = np.sqrt( (2*x_dist)**2 + (h1[:,1]-h0[:,1])**2 )
+    
+    # Triangle height is the cross product divided by the base
+    return cp/base
+
+def vip_score(Z,cellsize=1):
+    heights = np.zeros(np.size(Z))
+    dlist = np.array([np.sqrt(2),1])
+    for direction in range(4):
+        dist = dlist[direction % 2]
+        h0 = ashift(Z,direction) - Z
+        h1 = ashift(Z,direction+4) - Z
+        heights += triangle_height(h0.ravel(),h1.ravel(),dist*cellsize)
+        
+    # The original VIP spec simply used the sum; here an average is calculated
+    # to make for a more direct comparison to other average-based methods
+    heights = heights / 4
+    heights = heights.reshape(np.shape(Z))
+    return heights
+
+#%%
+    
+
+
+

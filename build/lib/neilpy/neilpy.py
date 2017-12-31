@@ -9,6 +9,8 @@ Created on Fri Dec  1 21:40:01 2017
 TODO:
 Port over the VIP algorithm.
 Create a routine to build 3D models.
+Swiss shading
+More interpolators
 '''
 
 # For development of packages, see:
@@ -17,6 +19,7 @@ Create a routine to build 3D models.
 # https://github.com/BillMills/pythonPackageLesson
 # https://biodata-club.github.io/lessons/python/packages/lesson/
 # http://python-notes.curiousefficiency.org/en/latest/python_concepts/import_traps.html
+
 
 
 
@@ -284,7 +287,7 @@ def read_las(filename):
 # min/max natively, and is too slow when not cython.
 # It would look like: 
 # Z,xi,yi,binnum = stats.binned_statistic_2d(x,y,z,statistic='min',bins=(x_edge,y_edge))
-def create_dem(x,y,z,cellsize=1,bin_type='max',use_binned_statistic=False):
+def create_dem(x,y,z,cellsize=1,bin_type='max',use_binned_statistic=False,inpaint=False):
     
     #x = df.x.values
     #y = df.y.values
@@ -327,6 +330,9 @@ def create_dem(x,y,z,cellsize=1,bin_type='max',use_binned_statistic=False):
         
         I.flat[mx.index.values] = mx.values
         I = I.reshape((ny,nx))
+        
+    if inpaint==True:
+        I = inpaint_nans_by_springs(I)
     
     return I,t
 
@@ -439,7 +445,6 @@ def inpaint_nans_by_springs(A,inplace=False,neighbors=4):
     
 #%%
         
-# TODO: add SMRF, add GEOMORPHONS, SWISS SHADING, more INTERPOlATORS
 
 
 #%%
@@ -744,7 +749,7 @@ def smrf(x,y,z,cellsize=1,windows=18,slope_threshold=.15,elevation_threshold=.5,
     if np.isscalar(windows):
         windows = np.arange(windows) + 1
     
-    Zmin,t = create_dem(x,y,z,resolution=cellsize,bin_type='min');
+    Zmin,t = create_dem(x,y,z,cellsize=cellsize,bin_type='min');
     is_empty_cell = np.isnan(Zmin)
     Zmin = inpaint_nans_by_springs(Zmin)
     low_outliers = progressive_filter(-Zmin,np.array([1]),cellsize,slope_threshold=5); 
@@ -798,3 +803,43 @@ def smrf(x,y,z,cellsize=1,windows=18,slope_threshold=.15,elevation_threshold=.5,
 
 
 #%%
+'''
+h0 is the height of the neighbor pixel in one direction, relative to the center
+h1 is the height of the pixel on the other size of the center pixel (same dir)
+xdist is the real distance between them (as some neighbors are diagnonal)
+'''
+    
+def triangle_height(h0,h1,x_dist=1):
+    n = np.shape(h0)
+
+    # The area of the triangle is half of the cross product    
+    h0 = np.column_stack((-x_dist*np.ones(n),h0))
+    h1 = np.column_stack(( x_dist*np.ones(n),h1))
+    cp = np.abs(np.cross(h0,h1))
+    
+    # Find the base from the original coords
+    base = np.sqrt( (2*x_dist)**2 + (h1[:,1]-h0[:,1])**2 )
+    
+    # Triangle height is the cross product divided by the base
+    return cp/base
+
+def vip_score(Z,cellsize=1):
+    heights = np.zeros(np.size(Z))
+    dlist = np.array([np.sqrt(2),1])
+    for direction in range(4):
+        dist = dlist[direction % 2]
+        h0 = ashift(Z,direction) - Z
+        h1 = ashift(Z,direction+4) - Z
+        heights += triangle_height(h0.ravel(),h1.ravel(),dist*cellsize)
+        
+    # The original VIP spec simply used the sum; here an average is calculated
+    # to make for a more direct comparison to other average-based methods
+    heights = heights / 4
+    heights = heights.reshape(np.shape(Z))
+    return heights
+
+#%%
+    
+
+
+
