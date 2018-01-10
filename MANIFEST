@@ -2,5 +2,6 @@
 README.txt
 setup.py
 neilpy\__init__.py
+neilpy\filters.py
 neilpy\neilpy.py
 neilpy\test_neilpy.py

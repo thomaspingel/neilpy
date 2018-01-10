@@ -7,7 +7,6 @@ Created on Fri Dec  1 21:40:01 2017
 
 '''
 TODO:
-Port over the VIP algorithm.
 Create a routine to build 3D models.
 Swiss shading
 More interpolators
