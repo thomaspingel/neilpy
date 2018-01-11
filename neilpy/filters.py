@@ -9,12 +9,12 @@ import numpy as np
 
 #%%
 
-def topographic_ruggedness(X):
+def terrain_ruggedness(X):
     '''
     The square root of the average of the squared differences between a pixel 
     and its neighbors.
     
-    The Topographic Ruggedness Index (TRI) is a measure of the heterogeneity
+    The Terrain Ruggedness Index (TRI) is a measure of the heterogeneity
     of a local neighboorhood in a digital elevation model.  According to the 
     original specification, the neighboorhood is a 3x3 window.  However, any
     odd-sized (3x3, 5x5, etc.) neighbhorhood can be calculated.
