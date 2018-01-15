@@ -502,6 +502,7 @@ def openness(Z,cellsize=1,lookup_pixels=1,neighbors=np.arange(8)):
     # Openness is definted as the mean of the minimum angles of all 8 neighbors        
     return np.rad2deg(np.mean(opn,0))
 
+#%%
 
 
 
@@ -519,7 +520,7 @@ def openness(Z,cellsize=1,lookup_pixels=1,neighbors=np.arange(8)):
 # to decimal as it progresses.  Upper left pixel is the least significant
 # digit, left pixel is the most significant pixel.
     
-def ternary_pattern_from_openness(Z,cellsize=1,lookup_pixels=1,threshold_angle=0,use_negative_openness=True):
+def ternary_pattern_from_openness(Z,cellsize=1,lookup_pixels=1,threshold_angle=0,use_negative_openness=True,lowest=False):
     pows = 3**np.arange(8)
     #bc = np.zeros(np.shape(Z),dtype=np.uint32)
     tc = np.zeros(np.shape(Z),dtype=np.uint16)
@@ -540,6 +541,10 @@ def ternary_pattern_from_openness(Z,cellsize=1,lookup_pixels=1,threshold_angle=0
     
         # Increment f
         f = f * 10;
+        
+    if lowest:
+        lookup_table = np.array([get_lowest_equivalent(x) for x in np.arange(3**8)])
+        tc = lookup_table[tc]
     
     return tc
 
@@ -632,10 +637,10 @@ def terrain_code_to_geomorphon(terrain_code,method='loose'):
             strict_table[5,:4]  = [3,3,5,5]
             strict_table[6,:3]  = [3,3,3]
             strict_table[7,:2]  = [3,3]
-            strict_table[8,:1]  = [3]
+            strict_table[8,:1]  = [2]
             for i in range(3**8):
                 base = int2base(i,3)
-                r,c = base.count('0'), base.count('2')
+                r,c = base.count('2'), base.count('0')
                 lookup_table[i] = strict_table[r,c]
     geomorphon = lookup_table[terrain_code]
     return geomorphon
@@ -643,16 +648,16 @@ def terrain_code_to_geomorphon(terrain_code,method='loose'):
 #%%
 def geomorphon_cmap():
     lut = [255,255,255, \
-    224,224,224, \
-    34,21,15, \
-    80,41,43, \
-    102,66,56, \
-    231,206,51, \
-    231,230,64, \
-    178,200,37, \
-    135,181,108, \
-    53,52,132, \
-    14,13,11]
+    220,220,220, \
+    56,0,0, \
+    200,0,0, \
+    255,80,20, \
+    250,210,60, \
+    255,255,60, \
+    180,230,20, \
+    60,250,150, \
+    0,0,255, \
+    0,0,56]
     return lut
     
 #%%
@@ -710,6 +715,8 @@ def get_geomorphon_from_openness(Z,cellsize=1,lookup_pixels=1,threshold_angle=1)
         num_neg[O < -threshold_angle] = num_neg[O < -threshold_angle] + 1
     
     lookup_table = np.zeros((9,9),dtype=np.uint8)
+
+    # 1 – flat, 2 – peak, 3 - ridge, 4 – shoulder, 5 – spur, 6 – slope, 7 – hollow, 8 – footslope, 9 – valley, and 10 – pit
     #                      Number of cells higher
     lookup_table[0,:]   = [1,1,1,8,8,9,9,9,10] # 
     lookup_table[1,:8]  = [1,1,8,8,8,9,9,9]    # Num
@@ -719,12 +726,11 @@ def get_geomorphon_from_openness(Z,cellsize=1,lookup_pixels=1,threshold_angle=1)
     lookup_table[5,:4]  = [3,3,5,5]
     lookup_table[6,:3]  = [3,3,3]
     lookup_table[7,:2]  = [3,3]
-    lookup_table[8,:1]  = [3]    
+    lookup_table[8,:1]  = [2]    
     
-    geomorphons = lookup_table[num_neg.ravel(),num_pos.ravel()].reshape(np.shape(Z))
+    geomorphons = lookup_table[num_pos.ravel(),num_neg.ravel()].reshape(np.shape(Z))
     
     return geomorphons
-
 
 
 #%% The Simple Morphological Filter

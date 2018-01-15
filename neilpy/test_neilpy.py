@@ -201,3 +201,28 @@ base = np.sqrt((2**xdist*np.ones(n))**2 + (y[:,2] - y[:,1])**2)
 # Calculate height
 h = cp/base
 print(h)
+
+
+#%%
+with rasterio.open('../sample_data/sample_dem.tif') as src:
+    Z = src.read(1)
+    Zt = src.affine
+
+plt.imshow(Z,cmap='terrain',vmin=-500,vmax=2000)
+plt.show()
+
+G = get_geomorphons(Z,cellsize=Zt[0],lookup_pixels=25,threshold_angle=1,method='strict')
+
+# Apply a "standard" colormap and display the image
+im = Image.fromarray(G,mode='L')
+im.putpalette(geomorphon_cmap())
+plt.imshow(im)
+plt.show()
+
+#%%
+
+with rasterio.open('../sample_data/sample_dem_geomorphons.tif') as src:
+    G2 = src.read(1)
+np.sum(G==G2) / np.size(G2)  
+    
+

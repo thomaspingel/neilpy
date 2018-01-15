@@ -1,0 +1,31 @@
+<PAMDataset>
+  <Metadata domain="Esri">
+    <MDI key="PyramidResamplingType">NEAREST</MDI>
+  </Metadata>
+  <PAMRasterBand band="1">
+    <Histograms>
+      <HistItem>
+        <HistMin>-0.5</HistMin>
+        <HistMax>10.5</HistMax>
+        <BucketCount>11</BucketCount>
+        <IncludeOutOfRange>1</IncludeOutOfRange>
+        <Approximate>0</Approximate>
+        <HistCounts>0|13464|6199|50633|4659|287901|628614|196804|9863|95075|4860</HistCounts>
+      </HistItem>
+    </Histograms>
+    <Metadata>
+      <MDI key="COLOR_TABLE_RULES_COUNT">11</MDI>
+      <MDI key="COLOR_TABLE_RULE_RGB_0">1.000000e+00 1.000000e+00 220 220 220 220 220 220</MDI>
+      <MDI key="COLOR_TABLE_RULE_RGB_1">2.000000e+00 2.000000e+00 56 0 0 56 0 0</MDI>
+      <MDI key="COLOR_TABLE_RULE_RGB_10">1.100000e+01 1.100000e+01 255 0 255 255 0 255</MDI>
+      <MDI key="COLOR_TABLE_RULE_RGB_2">3.000000e+00 3.000000e+00 200 0 0 200 0 0</MDI>
+      <MDI key="COLOR_TABLE_RULE_RGB_3">4.000000e+00 4.000000e+00 255 80 20 255 80 20</MDI>
+      <MDI key="COLOR_TABLE_RULE_RGB_4">5.000000e+00 5.000000e+00 250 210 60 250 210 60</MDI>
+      <MDI key="COLOR_TABLE_RULE_RGB_5">6.000000e+00 6.000000e+00 255 255 60 255 255 60</MDI>
+      <MDI key="COLOR_TABLE_RULE_RGB_6">7.000000e+00 7.000000e+00 180 230 20 180 230 20</MDI>
+      <MDI key="COLOR_TABLE_RULE_RGB_7">8.000000e+00 8.000000e+00 60 250 150 60 250 150</MDI>
+      <MDI key="COLOR_TABLE_RULE_RGB_8">9.000000e+00 9.000000e+00 0 0 255 0 0 255</MDI>
+      <MDI key="COLOR_TABLE_RULE_RGB_9">1.000000e+01 1.000000e+01 0 0 56 0 0 56</MDI>
+    </Metadata>
+  </PAMRasterBand>
+</PAMDataset>
