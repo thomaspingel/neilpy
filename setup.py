@@ -1,6 +1,6 @@
 from distutils.core import setup
 
-dependencies = ['scipy','pandas','rasterio','numpy']
+
 setup(
     name='NeilPy',
     version='0.1',
@@ -23,6 +23,9 @@ setup(
                  'Operating System :: OS Independent',
                  'License :: OSI Approved :: MIT License'],
     keywords='GIS lidar',
-	install_requires=dependencies,
+	install_requires=['scipy','pandas','rasterio','numpy'],
+	
+	package_data={'': ['swiss_shading_lookup.png']},
+
 	
 	)

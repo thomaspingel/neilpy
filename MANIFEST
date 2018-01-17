@@ -4,4 +4,5 @@ setup.py
 neilpy\__init__.py
 neilpy\filters.py
 neilpy\neilpy.py
+neilpy\swiss_shading_lookup.png
 neilpy\test_neilpy.py

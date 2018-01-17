@@ -24,6 +24,8 @@ More interpolators
 
 
 #%%
+import os
+import inspect
 import struct
 import pandas as pd
 import numpy as np
@@ -38,6 +40,10 @@ from scipy import interpolate
 from PIL import Image
 from skimage.util import apply_parallel
 from skimage.morphology import disk
+
+# Global variable to help load data files (PNG-based color tables, etc.)
+neilpy_dir = os.path.dirname(inspect.stack()[0][1])
+
 
 
 #%% Raster visualization functions
@@ -105,14 +111,16 @@ def aspect(Z,return_as='degrees',flat_as='nan'):
 # http://edndoc.esri.com/arcobjects/9.2/net/shared/geoprocessing/spatial_analyst_tools/how_hillshade_works.htm
 # ESRI's hillshade algorithm, but using the numpy versions of slope and aspect
 # given above, so results may differ slightly from ESRI's version.
-def hillshade(Z,cellsize=1,z_factor=1,zenith=45,azimuth=315):
+# If dtype is anytho
+def hillshade(Z,cellsize=1,z_factor=1,zenith=45,azimuth=315,return_uint8=True):
     zenith, azimuth = np.deg2rad((zenith,azimuth))
     S = slope(Z,cellsize=cellsize,z_factor=z_factor,return_as='radians')
     A = aspect(Z,return_as='radians',flat_as=0)
     H = (np.cos(zenith) * np.cos(S)) + (np.sin(zenith) * np.sin(S) * np.cos(azimuth - A))
     H[H<0] = 0
-    H = 255 * H
-    H = np.round(H).astype(np.uint8)
+    if return_uint8:
+        H = 255 * H
+        H = np.round(H).astype(np.uint8)
     return H
 
 # The user can specify a range of zeniths and azimuths to calculate a very
@@ -131,7 +139,7 @@ def multiple_illumination(Z,cellsize=1,z_factor=1,zeniths=np.array([45]),azimuth
             H1 = hillshade(Z,cellsize=cellsize,z_factor=z_factor,zenith=zenith,azimuth=azimuth)
             H = np.stack((H,H1),axis=2)
             H = np.max(H,axis=2)
-    return H
+    return H.astype(np.uint8)
 
 # Calculates a Perceptually Scaled Slope Map (PSSM) of the input DEM, and 
 # returns a bone shaded colormapped raster.
@@ -701,18 +709,29 @@ def get_geomorphons(Z,cellsize=1,lookup_pixels=5,threshold_angle=1,use_negative_
 
     return geomorphon
 
-#%%
-# This is the best go-to function for calcluating a geomorhon from an openness
-# calculation.    
-def get_geomorphon_from_openness(Z,cellsize=1,lookup_pixels=1,threshold_angle=1):
+
+#%%  Edit to try to include the "correction of forms" section in J&S
+    
+def count_openness(Z,cellsize,lookup_pixels,threshold_angle):
+    
     num_pos = np.zeros(np.shape(Z),dtype=np.uint8)
     num_neg = np.zeros(np.shape(Z),dtype=np.uint8)
-    
-    for i in range(8):
+        
+    for i in range(8):        
         O = openness(Z,cellsize,lookup_pixels,neighbors=np.array([i]))
         O = O - openness(-Z,cellsize,lookup_pixels,neighbors=np.array([i]))
         num_pos[O > threshold_angle] = num_pos[O > threshold_angle] + 1
         num_neg[O < -threshold_angle] = num_neg[O < -threshold_angle] + 1
+    return num_pos, num_neg
+    
+#%%
+# This is the best go-to function for calcluating a geomorhon from an openness
+# calculation.    
+def get_geomorphon_from_openness(Z,cellsize=1,lookup_pixels=1,threshold_angle=1,enhance=False):
+
+    
+    num_pos, num_neg = count_openness(Z,cellsize,lookup_pixels,threshold_angle)
+          
     
     lookup_table = np.zeros((9,9),dtype=np.uint8)
 
@@ -729,6 +748,21 @@ def get_geomorphon_from_openness(Z,cellsize=1,lookup_pixels=1,threshold_angle=1)
     lookup_table[8,:1]  = [2]    
     
     geomorphons = lookup_table[num_pos.ravel(),num_neg.ravel()].reshape(np.shape(Z))
+    
+    # Edit to try to include the "correction of forms" section in J&S
+    if enhance==True and lookup_pixels > 16:
+        lookup_pixels_sm = np.floor(lookup_pixels / 4).astype(np.int)
+        if lookup_pixels_sm < 4:
+            lookup_pixels_sm = 4
+        num_pos_sm, num_neg_sm = count_openness(Z,cellsize,lookup_pixels_sm,threshold_angle)
+        
+        geomorphons_sm = lookup_table[num_pos_sm.ravel(),num_neg_sm.ravel()].reshape(np.shape(Z))
+        geomorphons[(geomorphons==4) & (geomorphons_sm==1)] = 1
+        geomorphons[(geomorphons==8) & (geomorphons_sm==1)] = 1
+        geomorphons[(geomorphons==2) | (geomorphons==3)] = geomorphons_sm[(geomorphons==2) | (geomorphons==3)]
+        
+        
+    
     
     return geomorphons
 
@@ -844,7 +878,22 @@ def vip_score(Z,cellsize=1):
     return heights
 
 #%%
+def swiss_shading(Z,cellsize=1):
+    lut = plt.imread(neilpy_dir + '/swiss_shading_lookup.png')[:,:,:3]
+    lut = np.round(255 * lut)
+    lut = lut.astype(np.uint8)
     
+    z_min_prc, z_max_prc = 0,100
+    Z_norm = np.round(255 * (Z - Z.min()) / (Z.max() - Z.min())).astype(np.uint8)
+    Z_norm = Z_norm.astype(np.uint8)
+    H= hillshade(Z,cellsize)
+    
+    RGB = np.zeros((np.shape(Z)[0],np.shape(Z)[1],3),dtype=np.uint8)
+    RGB[:,:,0] = lut[:,:,0][Z_norm.ravel(),H.ravel()].reshape(np.shape(Z))
+    RGB[:,:,1] = lut[:,:,1][Z_norm.ravel(),H.ravel()].reshape(np.shape(Z))
+    RGB[:,:,2] = lut[:,:,2][Z_norm.ravel(),H.ravel()].reshape(np.shape(Z))
+    
+    return RGB
 
 
 

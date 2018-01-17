@@ -207,12 +207,19 @@ print(h)
 with rasterio.open('../sample_data/sample_dem.tif') as src:
     Z = src.read(1)
     Zt = src.affine
-
 plt.imshow(Z,cmap='terrain',vmin=-500,vmax=2000)
 plt.show()
+#%%
 
-G = get_geomorphons(Z,cellsize=Zt[0],lookup_pixels=25,threshold_angle=1,method='strict')
+G = get_geomorphon_from_openness(Z,cellsize=Zt[0],lookup_pixels=25,threshold_angle=1,enhance=False)
 
+#%%
+G2 = get_geomorphon_from_openness(Z,cellsize=Zt[0],lookup_pixels=6,threshold_angle=1,enhance=True)
+# repair peaks
+G[G==2] = G2[G==2]
+# repair ridges
+G[G==3] = G2[G==3]
+#%%
 # Apply a "standard" colormap and display the image
 im = Image.fromarray(G,mode='L')
 im.putpalette(geomorphon_cmap())
@@ -222,7 +229,51 @@ plt.show()
 #%%
 
 with rasterio.open('../sample_data/sample_dem_geomorphons.tif') as src:
-    G2 = src.read(1)
-np.sum(G==G2) / np.size(G2)  
+    G3 = src.read(1)
+np.sum(G==G3) / np.size(G3)  
     
+#%% Develop for Swiss Shading
+
+# Uh, awesome one!
+
+with rasterio.open('../sample_data/sample_dem.tif') as src:
+    Z = src.read(1)
+    Zt = src.affine
+cellsize = Zt[0]
+    
+"""
+color_table = np.zeros((2,2,3),dtype=np.uint8)
+color_table[0,0,:] = [110,120,117] # Top Left
+color_table[0,1,:] = [242,245,173] # Top Right
+color_table[1,0,:] = [128,148,138] # Bottom Left
+color_table[1,1,:] = [196,201,168] # Bottom Right
+
+# Top Left, Top Right, Bottom Left, Bottom Right
+R = ndi.zoom(np.array([[110,242],[128,196]]).astype(np.uint8),8)
+G = ndi.zoom(np.array([[120,245],[148,138]]).astype(np.uint8),8)
+B = ndi.zoom(np.array([[117,173],[138,168]]).astype(np.uint8),8)
+"""
+lut = plt.imread('../develop/swiss_shading_lookup.png')[:,:,:3]
+lut = (255*lut).astype(np.uint8)
+
+Z_norm = np.round(255 * (Z - np.min(Z)) / (np.max(Z) - np.min(Z))).astype(np.uint8)
+H = hillshade(Z,cellsize,return_uint8=True)
+
+RGB = np.zeros((np.shape(Z)[0],np.shape(Z)[1],3))
+RGB[:,:,0] = lut[:,:,0][Z_norm.ravel(),H.ravel()].reshape(np.shape(Z))
+RGB[:,:,1] = lut[:,:,1][Z_norm.ravel(),H.ravel()].reshape(np.shape(Z))
+RGB[:,:,2] = lut[:,:,2][Z_norm.ravel(),H.ravel()].reshape(np.shape(Z))
+
+plt.imshow(RGB)
+
+
+#%%
+with rasterio.open('../sample_data/sample_dem.tif') as src:
+    Z = src.read(1)
+    Zt = src.affine
+cellsize = Zt[0]
+    
+RGB = swiss_shading(Z,cellsize)
+
+plt.imshow(RGB)
 
