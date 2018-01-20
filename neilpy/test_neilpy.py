@@ -369,7 +369,7 @@ with rasterio.open('../sample_data/sample_dem.tif') as src:
     Zt = src.affine
 cellsize = Zt[0]
 
-name = 'swiss'    
+name = 'swiss_green'    
 RGB = colortable_shade(Z,name,Zt[0])
 imsave(name + '.png',RGB)
 
