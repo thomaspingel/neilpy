@@ -253,9 +253,46 @@ R = ndi.zoom(np.array([[110,242],[128,196]]).astype(np.uint8),8)
 G = ndi.zoom(np.array([[120,245],[148,138]]).astype(np.uint8),8)
 B = ndi.zoom(np.array([[117,173],[138,168]]).astype(np.uint8),8)
 """
-lut = plt.imread('../develop/swiss_shading_lookup.png')[:,:,:3]
+lut = plt.imread('swiss_shading_lookup_flipped.png')[:,:,:3]
 lut = (255*lut).astype(np.uint8)
 
+# Subtract Z_norm from 255 here to invert the colormap
+Z_norm = np.round(255 * (Z - np.min(Z)) / (np.max(Z) - np.min(Z))).astype(np.uint8)
+H = hillshade(Z,cellsize,return_uint8=True)
+
+RGB = np.zeros((np.shape(Z)[0],np.shape(Z)[1],3))
+RGB[:,:,0] = lut[:,:,0][Z_norm.ravel(),H.ravel()].reshape(np.shape(Z))
+RGB[:,:,1] = lut[:,:,1][Z_norm.ravel(),H.ravel()].reshape(np.shape(Z))
+RGB[:,:,2] = lut[:,:,2][Z_norm.ravel(),H.ravel()].reshape(np.shape(Z))
+
+plt.imshow(RGB)
+
+#%% Develop for Swiss Shading; got it!
+
+# Uh, awesome one!
+
+with rasterio.open('../sample_data/sample_dem.tif') as src:
+    Z = src.read(1)
+    Zt = src.affine
+cellsize = Zt[0]
+    
+"""
+color_table = np.zeros((2,2,3),dtype=np.uint8)
+color_table[0,0,:] = [110,120,117] # Top Left
+color_table[0,1,:] = [242,245,173] # Top Right
+color_table[1,0,:] = [128,148,138] # Bottom Left
+color_table[1,1,:] = [196,201,168] # Bottom Right
+
+# Top Left, Top Right, Bottom Left, Bottom Right
+R = ndi.zoom(np.array([[110,242],[128,196]]).astype(np.uint8),8)
+G = ndi.zoom(np.array([[120,245],[148,138]]).astype(np.uint8),8)
+B = ndi.zoom(np.array([[117,173],[138,168]]).astype(np.uint8),8)
+"""
+lut = plt.imread('swiss_shading_lookup.png')[:,:,:3]
+lut = (255*lut).astype(np.uint8)
+
+# Subtract 255 here to invert the colormap!
+# 
 Z_norm = np.round(255 * (Z - np.min(Z)) / (np.max(Z) - np.min(Z))).astype(np.uint8)
 H = hillshade(Z,cellsize,return_uint8=True)
 
@@ -268,12 +305,74 @@ plt.imshow(RGB)
 
 
 #%%
+
+fig = plt.imshow(RGB)
+plt.axis('off')
+fig.axes.get_xaxis().set_visible(False)
+fig.axes.get_yaxis().set_visible(False)
+plt.margins(0,0)
+plt.savefig('just_the_image.png',bbox_inches='tight',pad_inches=0.0)
+
+
+
+#%% play around
 with rasterio.open('../sample_data/sample_dem.tif') as src:
     Z = src.read(1)
     Zt = src.affine
 cellsize = Zt[0]
     
-RGB = swiss_shading(Z,cellsize)
+"""
+color_table = np.zeros((2,2,3),dtype=np.uint8)
+color_table[0,0,:] = [110,120,117] # Top Left
+color_table[0,1,:] = [242,245,173] # Top Right
+color_table[1,0,:] = [128,148,138] # Bottom Left
+color_table[1,1,:] = [196,201,168] # Bottom Right
+"""
+# Top Left, Top Right, Bottom Left, Bottom Right
+#R = ndi.zoom(np.array([[40,116],[90,95]]).astype(np.uint8),128)
+#G = ndi.zoom(np.array([[38,102],[74,77]]).astype(np.uint8),128)
+#B = ndi.zoom(np.array([[74,109],[84,85]]).astype(np.uint8),128)
+#lut = np.stack((R,G,B),axis=2)
+spec = np.array([[90,74,84],[95,77,85],[40,38,74],[116,102,109]]) # dark
+spec = np.array([[129,137,131],[190,192,173],[117,124,121],[244,244,190]]) # swiss
+lut = np.zeros((256,256,3),dtype=np.uint8)
+lut[:,:,0] = ndi.zoom([[spec[0,0],spec[1,0]],[spec[2,0],spec[3,0]]],128)
+lut[:,:,1] = ndi.zoom([[spec[0,1],spec[1,1]],[spec[2,1],spec[3,1]]],128)
+lut[:,:,2] = ndi.zoom([[spec[0,2],spec[1,2]],[spec[2,2],spec[3,2]]],128)
+
+
+#lut = plt.imread('swiss_shading_test.png')[:,:,:3]
+#lut = (255*lut).astype(np.uint8)
+
+Z_norm = np.round(255 * (Z - np.min(Z)) / (np.max(Z) - np.min(Z))).astype(np.uint8)
+H = hillshade(Z,cellsize,return_uint8=True)
+
+#                                                      this is the key
+# without the uint8, it's processed as a float, andthe resulting image is
+# very different (and cool!                                \/
+RGB = np.zeros((np.shape(Z)[0],np.shape(Z)[1],3),dtype=np.uint8)
+RGB[:,:,0] = lut[:,:,0][Z_norm.ravel(),H.ravel()].reshape(np.shape(Z))
+RGB[:,:,1] = lut[:,:,1][Z_norm.ravel(),H.ravel()].reshape(np.shape(Z))
+RGB[:,:,2] = lut[:,:,2][Z_norm.ravel(),H.ravel()].reshape(np.shape(Z))
 
 plt.imshow(RGB)
+
+#%%
+from scipy.misc import imsave
+imsave('lut.png',lut)
+imsave('orig5.png',RGB)
+
+
+#%%
+with rasterio.open('../sample_data/sample_dem.tif') as src:
+    Z = src.read(1)
+    Zt = src.affine
+cellsize = Zt[0]
+
+name = 'swiss'    
+RGB = colortable_shade(Z,name,Zt[0])
+imsave(name + '.png',RGB)
+
+
+
 

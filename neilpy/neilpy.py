@@ -895,5 +895,31 @@ def swiss_shading(Z,cellsize=1):
     
     return RGB
 
+#%%
+    
+def colortable_shade(Z,name='swiss',cellsize=1):
+    if type(name) == str:
+        if name=='bare_earth_dark':
+            spec = np.array([[90,74,84],[95,77,85],[40,38,74],[116,102,109]])
+        if name=='swiss_dark':
+            spec = np.array([[110,79,107],[190,192,173],[40,38,74],[244,244,190]])
+        elif name=='swiss':
+            spec = np.array([[129,137,131],[190,192,173],[117,124,121],[244,244,190]])
+        elif name=='swiss_green':
+            spec = np.array([[118,162,120],[177,232,158],[111,123,115],[242,254,186]])
+        lut = np.zeros((256,256,3),dtype=np.uint8)
+        lut[:,:,0] = ndi.zoom([[spec[0,0],spec[1,0]],[spec[2,0],spec[3,0]]],128)
+        lut[:,:,1] = ndi.zoom([[spec[0,1],spec[1,1]],[spec[2,1],spec[3,1]]],128)
+        lut[:,:,2] = ndi.zoom([[spec[0,2],spec[1,2]],[spec[2,2],spec[3,2]]],128)
+
+    H= hillshade(Z,cellsize)
+    Z = np.round(255 * (Z - Z.min()) / (Z.max() - Z.min())).astype(np.uint8)
+    
+    RGB = np.zeros((np.shape(Z)[0],np.shape(Z)[1],3),dtype=np.uint8)
+    RGB[:,:,0] = lut[:,:,0][Z.ravel(),H.ravel()].reshape(np.shape(Z))
+    RGB[:,:,1] = lut[:,:,1][Z.ravel(),H.ravel()].reshape(np.shape(Z))
+    RGB[:,:,2] = lut[:,:,2][Z.ravel(),H.ravel()].reshape(np.shape(Z))
+    
+    return RGB
 
 
