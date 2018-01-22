@@ -370,7 +370,7 @@ with rasterio.open('../sample_data/sample_dem.tif') as src:
     Zt = src.affine
 cellsize = Zt[0]
 
-name = 'gray'
+name = 'gray_high_contrast'
 RGB = colortable_shade(Z,name,Zt[0])
 imsave(name + '.png',RGB)
 
@@ -478,8 +478,10 @@ plt.plot(x,y)
 spec = np.array([[119,119,119],[255,255,255]])
 lut = np.zeros((256,256),dtype=np.float)
 lut[:] = np.nan
-lut[-1,:] = 255 * ifit(np.linspace(0,1,256),(.2,0),(.8,spec[1,0]))
-lut[:,-1] = 255 * ifit(np.linspace(0,1,256),(.05,spec[0.0]),(.8,spec[1,0]))
+lut[-1,:] = ifit(np.linspace(0,1,256),(.3,0),(.8,spec[1,0]))
+lut[:,-1] = ifit(np.linspace(0,1,256),(.05,spec[0,0]),(.7,spec[1,0]))
+lut[0,:] = ifit(np.linspace(0,1,256),(.35,0),(.975,spec[0,0]))
+lut[np.arange(256),np.arange(256)] = ifit(np.linspace(0,1,256),(.35,0),(.85,spec[1,0]))
 lut[:,0] = 0
 lut = inpaint_nans_by_springs(lut)
 
