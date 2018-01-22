@@ -107,7 +107,10 @@ def aspect(Z,return_as='degrees',flat_as='nan'):
             flat_as = np.nan
         A[(gx==0) & (gy==0)] = flat_as
         return A
-
+    
+#%%
+        
+#%%
 # http://edndoc.esri.com/arcobjects/9.2/net/shared/geoprocessing/spatial_analyst_tools/how_hillshade_works.htm
 # ESRI's hillshade algorithm, but using the numpy versions of slope and aspect
 # given above, so results may differ slightly from ESRI's version.
@@ -120,9 +123,10 @@ def hillshade(Z,cellsize=1,z_factor=1,zenith=45,azimuth=315,return_uint8=True):
     H[H<0] = 0
     if return_uint8:
         H = 255 * H
-        H = np.round(H).astype(np.uint8)
+        H = np.round(H)
+        H = H.astype(np.uint8)
     return H
-
+#%%
 # The user can specify a range of zeniths and azimuths to calculate a very
 # rudimentary multiple illumination model, where a hillshade is a calculated
 # for each combination, and the maximum illimunation retained.  This is really
@@ -452,7 +456,13 @@ def inpaint_nans_by_springs(A,inplace=False,neighbors=4):
     
 #%%
         
-
+def inpaint_nearest(X):
+    idx = np.isfinite(X)
+    RI,CI = np.meshgrid(np.arange(X.shape[0]),np.arange(X.shape[1]))
+    f_near = interpolate.NearestNDInterpolator((RI[idx],CI[idx]),X[idx])
+    idx = ~idx
+    X[idx] = f_near(RI[idx],CI[idx])
+    return X
 
 #%%
     
@@ -899,20 +909,41 @@ def swiss_shading(Z,cellsize=1):
     
 def colortable_shade(Z,name='swiss',cellsize=1):
     if type(name) == str:
-        if name=='bare_earth_dark':
-            spec = np.array([[90,74,84],[95,77,85],[40,38,74],[116,102,109]])
-        if name=='swiss_dark':
-            spec = np.array([[110,79,107],[190,192,173],[40,38,74],[244,244,190]])
-        elif name=='swiss':
-            spec = np.array([[129,137,131],[190,192,173],[117,124,121],[244,244,190]])
-        elif name=='swiss_green':
-            spec = np.array([[118,162,120],[177,232,158],[111,123,115],[242,254,186]])
-        lut = np.zeros((256,256,3),dtype=np.uint8)
-        lut[:,:,0] = ndi.zoom([[spec[0,0],spec[1,0]],[spec[2,0],spec[3,0]]],128)
-        lut[:,:,1] = ndi.zoom([[spec[0,1],spec[1,1]],[spec[2,1],spec[3,1]]],128)
-        lut[:,:,2] = ndi.zoom([[spec[0,2],spec[1,2]],[spec[2,2],spec[3,2]]],128)
+        if name=='gray_high_contrast':
+            lut = plt.imread(neilpy_dir + '/' + 'gray_high_contrast_lookup.png')
+            lut = np.stack((lut,lut,lut),axis=2)
+            lut = np.round(255 * lut)
+            lut = lut.astype(np.uint8)
+        elif name.endswith('.png'):
+            lut = plt.imread(neilpy_dir + '/' + name)
+            lut = np.stack((lut,lut,lut),axis=2)
+            lut = np.round(255 * lut)
+            lut = lut.astype(np.uint8)
+        else:
+            if name=='bare_earth_dark':
+                spec = np.array([[90,74,84],[95,77,85],[40,38,74],[116,102,109]])
+            if name=='bare_earth_medium':
+                spec = np.array([[189,169,107],[203,179,114],[0,0,10],[116,102,109]])
+            if name=='bare_earth_light':
+                spec = np.array([[189,169,107],[203,179,114],[0,0,10],[255,255,255]])
+            if name=='swiss_dark':
+                spec = np.array([[110,79,107],[190,192,173],[40,38,74],[244,244,190]])
+            elif name=='swiss':
+                spec = np.array([[129,137,131],[190,192,173],[117,124,121],[244,244,190]])
+            elif name=='swiss_green':
+                spec = np.array([[118,162,120],[177,232,158],[111,123,115],[242,254,186]])
+            elif name=='gray':
+                spec = np.array([[0,0,0],[119,119,119],[1,1,1],[255,255,255]])
+                lut = np.zeros((256,256,3),dtype=np.uint8)
+            lut[:,:,0] = ndi.zoom([[spec[0,0],spec[1,0]],[spec[2,0],spec[3,0]]],128)
+            lut[:,:,1] = ndi.zoom([[spec[0,1],spec[1,1]],[spec[2,1],spec[3,1]]],128)
+            lut[:,:,2] = ndi.zoom([[spec[0,2],spec[1,2]],[spec[2,2],spec[3,2]]],128)
+    else:
+        lut = name
+        if np.ndim(lut)!=3:
+            lut = np.stack((lut,lut,lut),axis=2)
 
-    H= hillshade(Z,cellsize)
+    H= hillshade(Z,cellsize,return_uint8=True)
     Z = np.round(255 * (Z - Z.min()) / (Z.max() - Z.min())).astype(np.uint8)
     
     RGB = np.zeros((np.shape(Z)[0],np.shape(Z)[1],3),dtype=np.uint8)

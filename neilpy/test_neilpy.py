@@ -334,7 +334,8 @@ color_table[1,1,:] = [196,201,168] # Bottom Right
 #B = ndi.zoom(np.array([[74,109],[84,85]]).astype(np.uint8),128)
 #lut = np.stack((R,G,B),axis=2)
 spec = np.array([[90,74,84],[95,77,85],[40,38,74],[116,102,109]]) # dark
-spec = np.array([[129,137,131],[190,192,173],[117,124,121],[244,244,190]]) # swiss
+#spec = np.array([[129,137,131],[190,192,173],[117,124,121],[244,244,190]]) # swiss
+spec = np.array([])
 lut = np.zeros((256,256,3),dtype=np.uint8)
 lut[:,:,0] = ndi.zoom([[spec[0,0],spec[1,0]],[spec[2,0],spec[3,0]]],128)
 lut[:,:,1] = ndi.zoom([[spec[0,1],spec[1,1]],[spec[2,1],spec[3,1]]],128)
@@ -369,10 +370,129 @@ with rasterio.open('../sample_data/sample_dem.tif') as src:
     Zt = src.affine
 cellsize = Zt[0]
 
-name = 'swiss_green'    
+name = 'gray'
 RGB = colortable_shade(Z,name,Zt[0])
 imsave(name + '.png',RGB)
 
+#%%
+with rasterio.open('../sample_data/sample_dem.tif') as src:
+    Z = src.read(1)
+    Zt = src.affine
+cellsize = Zt[0]
+I = plt.imread('gray_mash.png')
+I = (255 * I[:,:,0]).astype(np.uint8)
+H = hillshade(Z,cellsize,return_uint8=True)
+Zn = np.round(255 * (Z - np.min(Z)) / (np.max(Z) - np.min(Z))).astype(np.uint8)
+
+#%%
+
+O = np.zeros((256,256),dtype=np.float)
+O[:] = np.nan
+for z in range(256):
+    print(z)
+    for h in range(256):
+        pixels = I[(Zn==z) & (H==h)]
+        if len(pixels) > 0:
+            m = np.median(pixels)
+        else:
+            m = np.nan
+        O[z,h] = m
+
+#%%
+
+from scipy import interpolate
+
+k = np.random.choice(np.size(Z),1000,replace=False)
+
+# Alternatively, interp2 also works, but is designed for unstructured data and can run more slowly
+f = interpolate.interp2d(H.flatten()[k],Z.flatten()[k],I.flatten()[k],kind='cubic')
+
+#%%
+
+def inpaint_nearest(X):
+    idx = np.isfinite(X)
+    RI,CI = np.meshgrid(np.arange(X.shape[0]),np.arange(X.shape[1]))
+    f_near = interpolate.NearestNDInterpolator((RI[idx],CI[idx]),X[idx])
+    idx = ~idx
+    X[idx] = f_near(RI[idx],CI[idx])
+    return X
+
+
+#%%
+X = O.copy()
+idx = np.isfinite(X)
+RI,CI = np.meshgrid(np.arange(X.shape[0]),np.arange(X.shape[1]))
+f = interpolate.interp2d(RI[idx],CI[idx],X[idx],kind='cubic')
+
+#%%
+def logfit(x,k=12.5,low=0,high=0):
+    low_idx  = x < low
+    high_idx = x > 1 - high
+
+    idx = ~((low_idx) | (high_idx))
+    
+    a = x[idx]
+    a = (a - a.min()) / (a.max() - a.min())
+    x[idx] = a
+    
+    
+    y = 1 / (1 + np.e **(-k * (x - .5)))
+    y[low_idx] = 0
+    y[high_idx] = 1
+    
+    y = (y - y.min()) / (y.max() - y.min())
+
+    
+    return y
+
+def roundfit(x):
+    y = (x) ** 2
+    return y
+
+#%%
+    
+#%%
+
+def ifit(x,lows=(.1,0),highs=(.9,1),kind='quadratic'):
+    a = np.array([0,lows[0],highs[0],1])
+    b = np.array([lows[1],lows[1],highs[1],highs[1]])
+    if lows[0]==0:
+        a,b=a[1:],b[1:]
+    if highs[0]==1:
+        a,b=a[:-1],b[:-1]
+    f = interpolate.interp1d(a,b,kind)
+    result = f(x)
+    result[result < lows[1]] = lows[1]
+    result[result > highs[1]] = highs[1]
+    return result
+
+x = np.linspace(0,1)
+y = ifit(x,lows = (.1,.5),highs=(.9,.8))
+plt.plot(x,y)
 
 
 
+
+#%%
+#def loglut():
+spec = np.array([[119,119,119],[255,255,255]])
+lut = np.zeros((256,256),dtype=np.float)
+lut[:] = np.nan
+lut[-1,:] = 255 * ifit(np.linspace(0,1,256),(.2,0),(.8,spec[1,0]))
+lut[:,-1] = 255 * ifit(np.linspace(0,1,256),(.05,spec[0.0]),(.8,spec[1,0]))
+lut[:,0] = 0
+lut = inpaint_nans_by_springs(lut)
+
+RGB = colortable_shade(Z,lut,Zt[0])
+imsave('gray.png',RGB)
+imsave('gray_lut_exp.png',lut)
+
+#%%
+with rasterio.open('../sample_data/sample_dem.tif') as src:
+    Z = src.read(1)
+    Zt = src.affine
+cellsize = Zt[0]
+
+name = 'gray_nice.png'
+RGB = colortable_shade(Z,name,Zt[0])
+imsave(name + '.png',RGB)

@@ -25,7 +25,7 @@ setup(
     keywords='GIS lidar',
 	install_requires=['scipy','pandas','rasterio','numpy'],
 	
-	package_data={'': ['swiss_shading_lookup.png']},
+	package_data={'': ['swiss_shading_lookup.png','gray_high_contrast_lookup.png']},
 
 	
 	)
