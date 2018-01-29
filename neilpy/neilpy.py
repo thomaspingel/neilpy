@@ -905,6 +905,9 @@ def swiss_shading(Z,cellsize=1):
     
     return RGB
 
+
+
+
 #%%
     
 def colortable_shade(Z,name='swiss',cellsize=1):

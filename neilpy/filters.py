@@ -95,3 +95,60 @@ def esri_planar_slope(X):
     dz_dx = (np.sum(X[:,-1] * (1,2,1)) - np.sum(X[:,0] * (1,2,1))) / 8
     dz_dy = (np.sum(X[-1,:] * (1,2,1)) - np.sum(X[0,:] * (1,2,1))) / 8
     return np.sqrt(dz_dx**2 + dz_dy**2)
+
+
+#%%
+
+
+def openness(X,cellsize=1,skyview=False):
+    n = np.size(X)
+    n_rows = np.int(np.sqrt(n))
+    center = np.int(np.floor(n_rows / 2))
+    if np.ndim(X)==1:
+        X = np.reshape(X,(n_rows,n_rows))
+    X = X - X[center,center]
+    
+    # Distance matrix
+    D = np.meshgrid(np.arange(n_rows) - center, np.arange(n_rows) - center)
+    D = cellsize * np.sqrt(D[0]**2 + D[1]**2)
+    D[center,center] = np.inf
+    
+    # Slope to each pixel
+    O = 90 - np.rad2deg(np.arctan(X/D))
+    
+    # Calculate maximum angle for each of the 8 primary directions
+    angles = np.array([np.min(fetch_values(O,direction)) for direction in range(8)])
+    if skyview:
+        angles[angles>90] = 90
+    
+    # Openness is the mean of these angles
+    openness = np.mean(angles)
+    
+    return openness
+
+#%%
+
+def fetch_values(X,direction):
+    n_rows, n_cols = np.shape(X)
+    center = np.int(np.floor(n_rows / 2))
+    if direction==0:
+        return X[np.arange(center-1,-1,-1),np.arange(center-1,-1,-1)]
+    elif direction==1:
+        return X[np.arange(center-1,-1,-1),center]
+    elif direction==2:
+        return X[np.arange(center-1,-1,-1),np.arange(center+1,n_rows,1)]
+    elif direction==3:
+        return X[center,np.arange(center+1,2*center+1)]
+    elif direction==4:
+        return X[np.arange(center+1,2*center+1),np.arange(center+1,2*center+1)]
+    elif direction==5:
+        return X[np.arange(center+1,2*center+1),center]
+    elif direction==6:
+        return X[np.arange(center+1,2*center+1),np.arange(center-1,-1,-1)]    
+    elif direction==7:
+        return X[center,np.arange(center-1,-1,-1)]    
+        
+        
+        
+    
+    

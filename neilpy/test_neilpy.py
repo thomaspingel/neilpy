@@ -498,3 +498,19 @@ cellsize = Zt[0]
 name = 'gray_nice.png'
 RGB = colortable_shade(Z,name,Zt[0])
 imsave(name + '.png',RGB)
+
+#%%
+with rasterio.open('../sample_data/sample_dem.tif') as src:
+    Z = src.read(1)
+    Zt = src.affine
+cellsize = Zt[0]
+
+
+lookup_pixels = 20
+O = ndi.filters.generic_filter(Z,openness_filter,size=2*lookup_pixels+1,extra_keywords={'cellsize':cellsize})
+
+#%%
+Osk = ndi.filters.generic_filter(Z,openness_filter,size=2*lookup_pixels+1,extra_keywords={'cellsize':cellsize,'skyview':True})
+
+#%%
+O2 = openness(Z,cellsize,lookup_pixels=20)
