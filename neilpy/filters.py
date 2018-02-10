@@ -100,7 +100,7 @@ def esri_planar_slope(X):
 #%%
 
 
-def openness(X,cellsize=1,skyview=False):
+def openness_filter(X,cellsize=1,skyview=False):
     n = np.size(X)
     n_rows = np.int(np.sqrt(n))
     center = np.int(np.floor(n_rows / 2))

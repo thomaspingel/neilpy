@@ -172,6 +172,23 @@ def z_factor(latitude):
     return z_factor
 
 
+#%%
+# A rapid, near-approximation assuming a spherical body. Earth in meters is 
+# assumed but any radius can be supplied.  
+# See geopy's distance calculator for more flexible and accurate options.
+    
+def great_circle_distance(slat,slon,elat,elon,radius=6372795):
+    # Concert to radians
+    slat, slon = np.deg2rad(slat), np.deg2rad(slon)
+    elat, elon = np.deg2rad(elat), np.deg2rad(elon)
+    
+    # Calculate
+    dist = np.arccos(np.cos(slat)*np.cos(slon)*np.cos(elat)*np.cos(elon) + 
+                     np.cos(slat)*np.sin(slon)*np.cos(elat)*np.sin(elon) + 
+                     np.sin(slat)*np.sin(elat)) * radius
+
+    return dist
+
 
 #%% Lidar routines
 """
