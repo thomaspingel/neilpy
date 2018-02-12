@@ -607,12 +607,21 @@ zf = z_factor(Zt[5])
 
 #%%
 
-S = slope(Z,cellsize,z_factor=zf,return_as='percent')
-S[Z==src.nodata] = np.inf
+G = 100 * slope(Z,cellsize,z_factor=zf,return_as='percent')
+G[Z==src.nodata] = np.inf
+#%%
+W = 50
+L = 0
+tc = 1.1
+V = 1.2
+
+MW = 1.5*W + 2.0 * (W + L) * ((L/W)**2) + tc * (W+L) * (1.5 * V**2 + .35 * V * G)
+
+#%%
 
 start = np.round(~Zt * (-72.872,-16.509)).astype(int)[::-1]
 end = np.round(~Zt * (-72.708,-15.123)).astype(int)[::-1]
-route, cost = graph.route_through_array(S,start,end)
+route, cost = graph.route_through_array(MW,start,end)
 
 route = np.array(route)
 #%%
