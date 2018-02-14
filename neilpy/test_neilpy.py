@@ -511,7 +511,11 @@ cellsize = Zt[0]
 
 #%%
 lookup_pixels = 20
-O = ndi.filters.generic_filter(Z,neilpy.openness,size=2*lookup_pixels+1,extra_keywords={'cellsize':cellsize})
+O = ndi.filters.generic_filter(Z,openness_filter,size=2*lookup_pixels+1,extra_keywords={'cellsize':cellsize})
+
+#%%
+lookup_pixels = 20
+SV = ndi.filters.generic_filter(Z,skyview_filter,size=2*lookup_pixels+1,extra_keywords={'cellsize':cellsize})
 
 #%%
 Osk = ndi.filters.generic_filter(Z,openness_filter,size=2*lookup_pixels+1,extra_keywords={'cellsize':cellsize,'skyview':True})
@@ -628,3 +632,74 @@ route = np.array(route)
 plt.imshow(Z,cmap='terrain',vmin=-500,vmax=5000)
 plt.plot(route[:,1],route[:,0],'r-')
 plt.show()
+
+
+#%%
+
+
+def svf2(Z,cellsize=1,lookup_pixels=1):
+
+    nrows, ncols = np.shape(Z)
+    neighbors=np.arange(8)        
+    # neighbor directions are clockwise from top left,starting at zero
+
+    # This will sum the max angles    
+    sum_matrix = np.zeros_like(Z,dtype=np.float)
+    
+    # Define an array to calculate distances to neighboring pixels
+    dlist = np.array([np.sqrt(2),1])
+
+    # Calculate minimum angles        
+    for direction in neighbors:
+        max_angles = np.zeros_like(Z,dtype=np.float)
+        z_shift = Z.copy()
+        for L in range(1,lookup_pixels+1):
+            # Map distance to this pixel:
+            dist = dlist[direction % 2]
+            dist = cellsize * L * dist
+            # Angle is the arctan of the difference in elevations, divided by distance
+            z_shift = ashift(z_shift,direction,1)
+            these_angles = np.clip(np.arctan((z_shift-Z)/dist),0,np.inf)
+            max_angles = np.nanmax(np.stack((max_angles,these_angles),axis=0),axis=0)
+        sum_matrix += np.sin(max_angles)
+    sum_matrix = 1 - sum_matrix / 8
+
+    return sum_matrix
+
+#%%
+    
+def openness(Z,cellsize=1,lookup_pixels=1,neighbors=np.arange(8),skyview=False):
+
+    nrows, ncols = np.shape(Z)
+        
+    # neighbor directions are clockwise from top left,starting at zero
+    # neighbors = np.arange(8)   
+    
+    # Define a (fairly large) 3D matrix to hold the minimum angle for each pixel
+    # for each of the requested directions (usually 8)
+    opn = np.Inf * np.ones((len(neighbors),nrows,ncols))
+    
+    # Define an array to calculate distances to neighboring pixels
+    dlist = np.array([np.sqrt(2),1])
+
+    # Calculate minimum angles        
+    for L in np.arange(1,lookup_pixels+1):
+        for i,direction in enumerate(neighbors):
+            # Map distance to this pixel:
+            dist = dlist[direction % 2]
+            dist = cellsize * L * dist
+            # Angle is the arctan of the difference in elevations, divided by distance
+            these_angles = (np.pi/2) - np.arctan((ashift(Z,direction,L)-Z)/dist)
+            this_layer = opn[i,:,:]
+            this_layer[these_angles < this_layer] = these_angles[these_angles < this_layer]
+            opn[i,:,:] = this_layer
+
+    # Openness is definted as the mean of the minimum angles of all 8 neighbors  
+    return np.mean(opn,0)
+
+#%%
+tic = time.time()
+lookup_pixels = 20
+SV = ndi.filters.generic_filter(Z,skyview_filter,size=2*lookup_pixels+1,extra_keywords={'cellsize':cellsize})
+toc = time.time()
+print(toc-tic)

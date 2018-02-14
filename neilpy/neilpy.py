@@ -485,7 +485,7 @@ def inpaint_nearest(X):
     
 # ashift pulls a copy of the raster shifted.  0 shifts upper-left to lower right
 # 1 shifts top-to-bottom, etc.  Clockwise from upper left.
-def ashift(surface,direction,n=1):
+def ashift(surface,direction,n=1,fillnan=False):
     surface = surface.copy()
     if direction==0:
         surface[n:,n:] = surface[0:-n,0:-n]
@@ -508,7 +508,7 @@ def ashift(surface,direction,n=1):
 
 #%%
 
-def openness(Z,cellsize=1,lookup_pixels=1,neighbors=np.arange(8)):
+def openness(Z,cellsize=1,lookup_pixels=1,neighbors=np.arange(8),skyview=False):
 
     nrows, ncols = np.shape(Z)
         
@@ -523,7 +523,7 @@ def openness(Z,cellsize=1,lookup_pixels=1,neighbors=np.arange(8)):
     dlist = np.array([np.sqrt(2),1])
 
     # Calculate minimum angles        
-    for L in np.arange(lookup_pixels)+1:
+    for L in np.arange(1,lookup_pixels+1):
         for i,direction in enumerate(neighbors):
             # Map distance to this pixel:
             dist = dlist[direction % 2]
@@ -534,10 +534,36 @@ def openness(Z,cellsize=1,lookup_pixels=1,neighbors=np.arange(8)):
             this_layer[these_angles < this_layer] = these_angles[these_angles < this_layer]
             opn[i,:,:] = this_layer
 
-    # Openness is definted as the mean of the minimum angles of all 8 neighbors        
-    return np.rad2deg(np.mean(opn,0))
+    # Openness is definted as the mean of the minimum angles of all 8 neighbors  
+    return np.mean(opn,0)
 
-#%%
+#%% 
+    
+def skyview_factor(Z,cellsize=1,lookup_pixels=1):
+
+    nrows, ncols = np.shape(Z)
+
+    # This will sum the max angles    
+    sum_matrix = np.zeros_like(Z,dtype=np.float)
+    
+    # Define an array to calculate distances to neighboring pixels
+    dlist = np.array([np.sqrt(2),1])
+
+    for direction in np.arange(8):
+        max_angles = np.zeros_like(Z,dtype=np.float)
+        z_shift = Z.copy()
+        for L in range(1,lookup_pixels+1):
+            # Map distance to this pixel:
+            dist = dlist[direction % 2]
+            dist = cellsize * L * dist
+            # Angle is the arctan of the difference in elevations, divided by distance
+            z_shift = ashift(z_shift,direction,1)
+            these_angles = np.clip(np.arctan((z_shift-Z)/dist),0,np.inf)
+            max_angles = np.nanmax(np.stack((max_angles,these_angles),axis=0),axis=0)
+        sum_matrix += np.sin(max_angles)
+    sum_matrix = 1 - sum_matrix / 8
+
+    return sum_matrix
 
 
 

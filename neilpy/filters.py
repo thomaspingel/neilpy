@@ -99,8 +99,43 @@ def esri_planar_slope(X):
 
 #%%
 
+ # Found on https://stackoverflow.com/questions/40820955/numpy-average-distance-from-array-center
+def grid_distance(shp):
+    grid_x, grid_y = np.mgrid[0:shp[0], 0:shp[1]]
+    center = int(shp[0] / 2)
+    grid_x = grid_x - center
+    grid_y = grid_y - center
+    grid_distance = np.hypot(grid_x, grid_y)
+    return grid_distance
 
-def openness_filter2(X,cellsize=1,skyview=False):
+
+#%%
+    
+def skyview_filter(X,cellsize=1):
+    z=np.size(X)
+    w=int(np.sqrt(z))
+    c =(int(w/2))
+    X=X.reshape(w,w)
+
+    #Calculate height difference
+    height = X-X[c,c]
+    height = np.clip(height,0,np.inf)
+    height[c,c] = np.nan
+
+    g_dist = cellsize * grid_distance(np.shape(X))     
+
+    #Calculate Horizon angle
+    horizon_angle=np.arctan(height/g_dist)
+
+    max_angles = [np.max(fetch_values(horizon_angle,i)) for i in range(8)]
+    sv = 1 - np.mean(np.sin(max_angles))
+    
+    return sv
+
+#%%
+
+
+def openness_filter(X,cellsize=1,skyview=False):
     n = np.size(X)
     n_rows = np.int(np.sqrt(n))
     center = np.int(np.floor(n_rows / 2))
@@ -118,10 +153,14 @@ def openness_filter2(X,cellsize=1,skyview=False):
     
     # Calculate maximum angle for each of the 8 primary directions
     angles = np.array([np.min(fetch_values(O,direction)) for direction in range(8)])
+    
+    # Skyview is limited to a maximum angle of 90 degrees.  The sin of the 
+    # angle is used to normalize to 0/1
     if skyview:
         angles[angles>90] = 90
+        angles = np.sin(angles)
     
-    # Openness is the mean of these angles
+    # The result is the mean of these angles
     openness = np.mean(angles)
     
     return openness
