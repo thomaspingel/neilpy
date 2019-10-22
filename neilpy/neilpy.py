@@ -149,7 +149,7 @@ def multiple_illumination(Z,cellsize=1,z_factor=1,zeniths=np.array([45]),azimuth
 # returns a bone shaded colormapped raster.
 def pssm(Z,cellsize=1,ve=2.3,reverse=False):
     P = slope(Z,cellsize=cellsize,return_as='percent')
-    P = np.rad2deg(np.arctan(2.3 *  P))
+    P = np.rad2deg(np.arctan(ve *  P))
     P = (P - P.min()) / (P.max() - P.min())
     P = np.round(255*P).astype(np.uint8)
     if reverse==False:
