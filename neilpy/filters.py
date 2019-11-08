@@ -192,5 +192,20 @@ def fetch_values(X,direction):
         
         
         
-    
+#%%
+'''
+A Conway's Game of Life Filter
+'''
+def life_filter(neighborhood):
+    neighborhood = neighborhood.reshape((3,3)) # Added to accommodate filter
+    result = 0
+    this_cell  = neighborhood[1,1]
+    live_neighbors = np.sum(neighborhood) - this_cell
+    if this_cell == 1:
+        if live_neighbors==2 or live_neighbors==3:
+            result = 1
+    else:
+        if live_neighbors==3:
+            result=1
+    return result        
     
