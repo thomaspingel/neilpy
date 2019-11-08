@@ -7,7 +7,6 @@ Created on Fri Dec  1 21:40:01 2017
 
 '''
 TODO:
-Port over the VIP algorithm.
 Create a routine to build 3D models.
 Swiss shading
 More interpolators
@@ -25,6 +24,8 @@ More interpolators
 
 
 #%%
+import os
+import inspect
 import struct
 import pandas as pd
 import numpy as np
@@ -39,6 +40,92 @@ from scipy import interpolate
 from PIL import Image
 from skimage.util import apply_parallel
 from skimage.morphology import disk
+
+# Global variable to help load data files (PNG-based color tables, etc.)
+neilpy_dir = os.path.dirname(inspect.stack()[0][1])
+
+
+
+
+#%% Spatial Autocorrelation Functions
+
+    '''
+    Simple formula to calculate Getis-Ord Gi when given an array of values
+    and the pre-calculate n, global mean, and global variance.    
+    '''
+def gi_formula(x,n,m,v):
+    k = np.sum(np.isfinite(x)).astype(np.int) # number of non-nan neighbors
+    Gi =(np.nansum(x) - k*m) / np.sqrt((k * (n-1-k) * v) / (n-2))
+    return Gi
+
+     '''
+    Calculated Getis-Ord Gi Statistic of local autocorrelation on a raster.
+    For vector-based operations, see the package PySAL.
+    
+    The user can supply either a bineary footprint (structuring element) or
+    can supply a scaler value to indicate a size of structuring element.  In
+    this case, a square structuring element with zero at its center is used.
+    Users should supply odd-dimension neighborhoods (3x3, 5x5, etc).
+    
+    References
+    ----------
+    Ord, J.K. and A. Getis. 1995. Local Spatial Autocorrelation Statistics:
+    Distribution Issues and an Application. Geographical Analysis, 27(4): 286-
+    306. doi: 10.1111/j.1538-4632.1995.tb00912.x
+    
+    '''   
+def rasterGi(X,footprint,mode='nearest'):
+    
+    # Cast to a float; these operations won't all work on integers
+    X = X.astype(np.float)
+
+    # If a footprint was provided as a size, make a square structuring element 
+    # with a zero at the center.
+    if np.isscalar(footprint):
+        m = np.floor(footprint/2).astype(np.int)
+        w = np.ones((footprint,footprint))
+        w[m,m] = 0
+    else:
+        w = footprint
+        
+    # How many non-nans do we have in the array?
+    n = np.sum(np.isfinite(X))
+
+    # A vectorized operation to calculate the global mean and variance at each
+    # pixel, excluding that pixel.
+    mean_not_me = (np.nansum(X) - X) / (n-1)
+    var_not_me = ((np.nansum(X**2) - X**2) / (n-1)) - mean_not_me**2
+
+    # Within the strucutring element how many neighbors at each point?
+    if np.all(np.isfinite(X)):
+        w_neighbors = np.sum(w) * np.ones(np.shape(X),dtype=np.int)
+    else:
+        w_neighbors = ndi.filters.generic_filter(np.isfinite(X).astype(np.int),np.sum,footprint=w,mode=mode)
+
+    # Calculate Gi
+    a = (ndi.filters.generic_filter(X,np.nansum,footprint=w,mode=mode)) - (w_neighbors* mean_not_me)
+    b = np.sqrt((w_neighbors * (n-1-w_neighbors) * var_not_me) / (n-2))
+    del mean_not_me, var_not_me
+    Z = a / b
+    del a,b
+    
+    # Calculate Z-scores for CIs of 10, 5, and 1 percent (adjust for tails)
+    a = st.norm.ppf(.95)
+    b = st.norm.ppf(.975)
+    c = st.norm.ppf(.995)
+    
+    # Create an ArcGIS-like Gi_Bin indicating CIs (90/95/99) for above-and-below
+    Gi_Bin = np.zeros(np.shape(X)).astype(np.float)
+    Gi_Bin[Z>a] = 1
+    Gi_Bin[Z>b] = 2
+    Gi_Bin[Z>c] = 3
+    Gi_Bin[Z<-a] = -1
+    Gi_Bin[Z<-b] = -2
+    Gi_Bin[Z<-c] = -3
+    
+    # Return the binned value and the Z-score.  P is not returned since this
+    # is directly calculable from Z
+    return Gi_Bin, Z
 
 
 #%% Raster visualization functions
@@ -102,20 +189,26 @@ def aspect(Z,return_as='degrees',flat_as='nan'):
             flat_as = np.nan
         A[(gx==0) & (gy==0)] = flat_as
         return A
-
+    
+#%%
+        
+#%%
 # http://edndoc.esri.com/arcobjects/9.2/net/shared/geoprocessing/spatial_analyst_tools/how_hillshade_works.htm
 # ESRI's hillshade algorithm, but using the numpy versions of slope and aspect
 # given above, so results may differ slightly from ESRI's version.
-def hillshade(Z,cellsize=1,z_factor=1,zenith=45,azimuth=315):
+# If dtype is anytho
+def hillshade(Z,cellsize=1,z_factor=1,zenith=45,azimuth=315,return_uint8=True):
     zenith, azimuth = np.deg2rad((zenith,azimuth))
     S = slope(Z,cellsize=cellsize,z_factor=z_factor,return_as='radians')
     A = aspect(Z,return_as='radians',flat_as=0)
     H = (np.cos(zenith) * np.cos(S)) + (np.sin(zenith) * np.sin(S) * np.cos(azimuth - A))
     H[H<0] = 0
-    H = 255 * H
-    H = np.round(H).astype(np.uint8)
+    if return_uint8:
+        H = 255 * H
+        H = np.round(H)
+        H = H.astype(np.uint8)
     return H
-
+#%%
 # The user can specify a range of zeniths and azimuths to calculate a very
 # rudimentary multiple illumination model, where a hillshade is a calculated
 # for each combination, and the maximum illimunation retained.  This is really
@@ -132,13 +225,13 @@ def multiple_illumination(Z,cellsize=1,z_factor=1,zeniths=np.array([45]),azimuth
             H1 = hillshade(Z,cellsize=cellsize,z_factor=z_factor,zenith=zenith,azimuth=azimuth)
             H = np.stack((H,H1),axis=2)
             H = np.max(H,axis=2)
-    return H
+    return H.astype(np.uint8)
 
 # Calculates a Perceptually Scaled Slope Map (PSSM) of the input DEM, and 
 # returns a bone shaded colormapped raster.
 def pssm(Z,cellsize=1,ve=2.3,reverse=False):
     P = slope(Z,cellsize=cellsize,return_as='percent')
-    P = np.rad2deg(np.arctan(2.3 *  P))
+    P = np.rad2deg(np.arctan(ve *  P))
     P = (P - P.min()) / (P.max() - P.min())
     P = np.round(255*P).astype(np.uint8)
     if reverse==False:
@@ -160,6 +253,23 @@ def z_factor(latitude):
     z_factor = 1 / (np.pi / 180 * np.cos(latitude) * np.sqrt(numer/denom))
     return z_factor
 
+
+#%%
+# A rapid, near-approximation assuming a spherical body. Earth in meters is 
+# assumed but any radius can be supplied.  
+# See geopy's distance calculator for more flexible and accurate options.
+    
+def great_circle_distance(slat,slon,elat,elon,radius=6372795):
+    # Concert to radians
+    slat, slon = np.deg2rad(slat), np.deg2rad(slon)
+    elat, elon = np.deg2rad(elat), np.deg2rad(elon)
+    
+    # Calculate
+    dist = np.arccos(np.cos(slat)*np.cos(slon)*np.cos(elat)*np.cos(elon) + 
+                     np.cos(slat)*np.sin(slon)*np.cos(elat)*np.sin(elon) + 
+                     np.sin(slat)*np.sin(elat)) * radius
+
+    return dist
 
 
 #%% Lidar routines
@@ -445,13 +555,19 @@ def inpaint_nans_by_springs(A,inplace=False,neighbors=4):
     
 #%%
         
-
+def inpaint_nearest(X):
+    idx = np.isfinite(X)
+    RI,CI = np.meshgrid(np.arange(X.shape[0]),np.arange(X.shape[1]))
+    f_near = interpolate.NearestNDInterpolator((RI[idx],CI[idx]),X[idx])
+    idx = ~idx
+    X[idx] = f_near(RI[idx],CI[idx])
+    return X
 
 #%%
     
 # ashift pulls a copy of the raster shifted.  0 shifts upper-left to lower right
 # 1 shifts top-to-bottom, etc.  Clockwise from upper left.
-def ashift(surface,direction,n=1):
+def ashift(surface,direction,n=1,fillnan=False):
     surface = surface.copy()
     if direction==0:
         surface[n:,n:] = surface[0:-n,0:-n]
@@ -474,7 +590,7 @@ def ashift(surface,direction,n=1):
 
 #%%
 
-def openness(Z,cellsize=1,lookup_pixels=1,neighbors=np.arange(8)):
+def openness(Z,cellsize=1,lookup_pixels=1,neighbors=np.arange(8),skyview=False):
 
     nrows, ncols = np.shape(Z)
         
@@ -489,7 +605,7 @@ def openness(Z,cellsize=1,lookup_pixels=1,neighbors=np.arange(8)):
     dlist = np.array([np.sqrt(2),1])
 
     # Calculate minimum angles        
-    for L in np.arange(lookup_pixels)+1:
+    for L in np.arange(1,lookup_pixels+1):
         for i,direction in enumerate(neighbors):
             # Map distance to this pixel:
             dist = dlist[direction % 2]
@@ -500,9 +616,36 @@ def openness(Z,cellsize=1,lookup_pixels=1,neighbors=np.arange(8)):
             this_layer[these_angles < this_layer] = these_angles[these_angles < this_layer]
             opn[i,:,:] = this_layer
 
-    # Openness is definted as the mean of the minimum angles of all 8 neighbors        
-    return np.rad2deg(np.mean(opn,0))
+    # Openness is definted as the mean of the minimum angles of all 8 neighbors  
+    return np.mean(opn,0)
 
+#%% 
+    
+def skyview_factor(Z,cellsize=1,lookup_pixels=1):
+
+    nrows, ncols = np.shape(Z)
+
+    # This will sum the max angles    
+    sum_matrix = np.zeros_like(Z,dtype=np.float)
+    
+    # Define an array to calculate distances to neighboring pixels
+    dlist = np.array([np.sqrt(2),1])
+
+    for direction in np.arange(8):
+        max_angles = np.zeros_like(Z,dtype=np.float)
+        z_shift = Z.copy()
+        for L in range(1,lookup_pixels+1):
+            # Map distance to this pixel:
+            dist = dlist[direction % 2]
+            dist = cellsize * L * dist
+            # Angle is the arctan of the difference in elevations, divided by distance
+            z_shift = ashift(z_shift,direction,1)
+            these_angles = np.clip(np.arctan((z_shift-Z)/dist),0,np.inf)
+            max_angles = np.nanmax(np.stack((max_angles,these_angles),axis=0),axis=0)
+        sum_matrix += np.sin(max_angles)
+    sum_matrix = 1 - sum_matrix / 8
+
+    return sum_matrix
 
 
 
@@ -520,7 +663,7 @@ def openness(Z,cellsize=1,lookup_pixels=1,neighbors=np.arange(8)):
 # to decimal as it progresses.  Upper left pixel is the least significant
 # digit, left pixel is the most significant pixel.
     
-def ternary_pattern_from_openness(Z,cellsize=1,lookup_pixels=1,threshold_angle=0,use_negative_openness=True):
+def ternary_pattern_from_openness(Z,cellsize=1,lookup_pixels=1,threshold_angle=0,use_negative_openness=True,lowest=False):
     pows = 3**np.arange(8)
     #bc = np.zeros(np.shape(Z),dtype=np.uint32)
     tc = np.zeros(np.shape(Z),dtype=np.uint16)
@@ -541,6 +684,10 @@ def ternary_pattern_from_openness(Z,cellsize=1,lookup_pixels=1,threshold_angle=0
     
         # Increment f
         f = f * 10;
+        
+    if lowest:
+        lookup_table = np.array([get_lowest_equivalent(x) for x in np.arange(3**8)])
+        tc = lookup_table[tc]
     
     return tc
 
@@ -633,10 +780,10 @@ def terrain_code_to_geomorphon(terrain_code,method='loose'):
             strict_table[5,:4]  = [3,3,5,5]
             strict_table[6,:3]  = [3,3,3]
             strict_table[7,:2]  = [3,3]
-            strict_table[8,:1]  = [3]
+            strict_table[8,:1]  = [2]
             for i in range(3**8):
                 base = int2base(i,3)
-                r,c = base.count('0'), base.count('2')
+                r,c = base.count('2'), base.count('0')
                 lookup_table[i] = strict_table[r,c]
     geomorphon = lookup_table[terrain_code]
     return geomorphon
@@ -644,16 +791,16 @@ def terrain_code_to_geomorphon(terrain_code,method='loose'):
 #%%
 def geomorphon_cmap():
     lut = [255,255,255, \
-    224,224,224, \
-    34,21,15, \
-    80,41,43, \
-    102,66,56, \
-    231,206,51, \
-    231,230,64, \
-    178,200,37, \
-    135,181,108, \
-    53,52,132, \
-    14,13,11]
+    220,220,220, \
+    56,0,0, \
+    200,0,0, \
+    255,80,20, \
+    250,210,60, \
+    255,255,60, \
+    180,230,20, \
+    60,250,150, \
+    0,0,255, \
+    0,0,56]
     return lut
     
 #%%
@@ -697,20 +844,33 @@ def get_geomorphons(Z,cellsize=1,lookup_pixels=5,threshold_angle=1,use_negative_
 
     return geomorphon
 
-#%%
-# This is the best go-to function for calcluating a geomorhon from an openness
-# calculation.    
-def get_geomorphon_from_openness(Z,cellsize=1,lookup_pixels=1,threshold_angle=1):
+
+#%%  Edit to try to include the "correction of forms" section in J&S
+    
+def count_openness(Z,cellsize,lookup_pixels,threshold_angle):
+    
     num_pos = np.zeros(np.shape(Z),dtype=np.uint8)
     num_neg = np.zeros(np.shape(Z),dtype=np.uint8)
-    
-    for i in range(8):
+        
+    for i in range(8):        
         O = openness(Z,cellsize,lookup_pixels,neighbors=np.array([i]))
         O = O - openness(-Z,cellsize,lookup_pixels,neighbors=np.array([i]))
         num_pos[O > threshold_angle] = num_pos[O > threshold_angle] + 1
         num_neg[O < -threshold_angle] = num_neg[O < -threshold_angle] + 1
+    return num_pos, num_neg
+    
+#%%
+# This is the best go-to function for calcluating a geomorhon from an openness
+# calculation.    
+def get_geomorphon_from_openness(Z,cellsize=1,lookup_pixels=1,threshold_angle=1,enhance=False):
+
+    
+    num_pos, num_neg = count_openness(Z,cellsize,lookup_pixels,threshold_angle)
+          
     
     lookup_table = np.zeros((9,9),dtype=np.uint8)
+
+    # 1 – flat, 2 – peak, 3 - ridge, 4 – shoulder, 5 – spur, 6 – slope, 7 – hollow, 8 – footslope, 9 – valley, and 10 – pit
     #                      Number of cells higher
     lookup_table[0,:]   = [1,1,1,8,8,9,9,9,10] # 
     lookup_table[1,:8]  = [1,1,8,8,8,9,9,9]    # Num
@@ -720,12 +880,26 @@ def get_geomorphon_from_openness(Z,cellsize=1,lookup_pixels=1,threshold_angle=1)
     lookup_table[5,:4]  = [3,3,5,5]
     lookup_table[6,:3]  = [3,3,3]
     lookup_table[7,:2]  = [3,3]
-    lookup_table[8,:1]  = [3]    
+    lookup_table[8,:1]  = [2]    
     
-    geomorphons = lookup_table[num_neg.ravel(),num_pos.ravel()].reshape(np.shape(Z))
+    geomorphons = lookup_table[num_pos.ravel(),num_neg.ravel()].reshape(np.shape(Z))
+    
+    # Edit to try to include the "correction of forms" section in J&S
+    if enhance==True and lookup_pixels > 16:
+        lookup_pixels_sm = np.floor(lookup_pixels / 4).astype(np.int)
+        if lookup_pixels_sm < 4:
+            lookup_pixels_sm = 4
+        num_pos_sm, num_neg_sm = count_openness(Z,cellsize,lookup_pixels_sm,threshold_angle)
+        
+        geomorphons_sm = lookup_table[num_pos_sm.ravel(),num_neg_sm.ravel()].reshape(np.shape(Z))
+        geomorphons[(geomorphons==4) & (geomorphons_sm==1)] = 1
+        geomorphons[(geomorphons==8) & (geomorphons_sm==1)] = 1
+        geomorphons[(geomorphons==2) | (geomorphons==3)] = geomorphons_sm[(geomorphons==2) | (geomorphons==3)]
+        
+        
+    
     
     return geomorphons
-
 
 
 #%% The Simple Morphological Filter
@@ -839,7 +1013,72 @@ def vip_score(Z,cellsize=1):
     return heights
 
 #%%
+def swiss_shading(Z,cellsize=1):
+    lut = plt.imread(neilpy_dir + '/swiss_shading_lookup.png')[:,:,:3]
+    lut = np.round(255 * lut)
+    lut = lut.astype(np.uint8)
     
+    z_min_prc, z_max_prc = 0,100
+    Z_norm = np.round(255 * (Z - Z.min()) / (Z.max() - Z.min())).astype(np.uint8)
+    Z_norm = Z_norm.astype(np.uint8)
+    H= hillshade(Z,cellsize)
+    
+    RGB = np.zeros((np.shape(Z)[0],np.shape(Z)[1],3),dtype=np.uint8)
+    RGB[:,:,0] = lut[:,:,0][Z_norm.ravel(),H.ravel()].reshape(np.shape(Z))
+    RGB[:,:,1] = lut[:,:,1][Z_norm.ravel(),H.ravel()].reshape(np.shape(Z))
+    RGB[:,:,2] = lut[:,:,2][Z_norm.ravel(),H.ravel()].reshape(np.shape(Z))
+    
+    return RGB
 
+
+
+
+#%%
+    
+def colortable_shade(Z,name='swiss',cellsize=1):
+    if type(name) == str:
+        if name=='gray_high_contrast':
+            lut = plt.imread(neilpy_dir + '/' + 'gray_high_contrast_lookup.png')
+            lut = np.stack((lut,lut,lut),axis=2)
+            lut = np.round(255 * lut)
+            lut = lut.astype(np.uint8)
+        elif name.endswith('.png'):
+            lut = plt.imread(neilpy_dir + '/' + name)
+            lut = np.stack((lut,lut,lut),axis=2)
+            lut = np.round(255 * lut)
+            lut = lut.astype(np.uint8)
+        else:
+            if name=='bare_earth_dark':
+                spec = np.array([[90,74,84],[95,77,85],[40,38,74],[116,102,109]])
+            if name=='bare_earth_medium':
+                spec = np.array([[189,169,107],[203,179,114],[0,0,10],[116,102,109]])
+            if name=='bare_earth_light':
+                spec = np.array([[189,169,107],[203,179,114],[0,0,10],[255,255,255]])
+            if name=='swiss_dark':
+                spec = np.array([[110,79,107],[190,192,173],[40,38,74],[244,244,190]])
+            elif name=='swiss':
+                spec = np.array([[129,137,131],[190,192,173],[117,124,121],[244,244,190]])
+            elif name=='swiss_green':
+                spec = np.array([[118,162,120],[177,232,158],[111,123,115],[242,254,186]])
+            elif name=='gray':
+                spec = np.array([[0,0,0],[119,119,119],[1,1,1],[255,255,255]])
+                lut = np.zeros((256,256,3),dtype=np.uint8)
+            lut[:,:,0] = ndi.zoom([[spec[0,0],spec[1,0]],[spec[2,0],spec[3,0]]],128)
+            lut[:,:,1] = ndi.zoom([[spec[0,1],spec[1,1]],[spec[2,1],spec[3,1]]],128)
+            lut[:,:,2] = ndi.zoom([[spec[0,2],spec[1,2]],[spec[2,2],spec[3,2]]],128)
+    else:
+        lut = name
+        if np.ndim(lut)!=3:
+            lut = np.stack((lut,lut,lut),axis=2)
+
+    H= hillshade(Z,cellsize,return_uint8=True)
+    Z = np.round(255 * (Z - Z.min()) / (Z.max() - Z.min())).astype(np.uint8)
+    
+    RGB = np.zeros((np.shape(Z)[0],np.shape(Z)[1],3),dtype=np.uint8)
+    RGB[:,:,0] = lut[:,:,0][Z.ravel(),H.ravel()].reshape(np.shape(Z))
+    RGB[:,:,1] = lut[:,:,1][Z.ravel(),H.ravel()].reshape(np.shape(Z))
+    RGB[:,:,2] = lut[:,:,2][Z.ravel(),H.ravel()].reshape(np.shape(Z))
+    
+    return RGB
 
 
