@@ -193,10 +193,11 @@ def fetch_values(X,direction):
         
         
 #%%
-'''
-A Conway's Game of Life Filter
-'''
+
 def life_filter(neighborhood):
+    '''
+    A Conway's Game of Life Filter
+    '''
     neighborhood = neighborhood.reshape((3,3)) # Added to accommodate filter
     result = 0
     this_cell  = neighborhood[1,1]

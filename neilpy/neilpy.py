@@ -49,16 +49,19 @@ neilpy_dir = os.path.dirname(inspect.stack()[0][1])
 
 #%% Spatial Autocorrelation Functions
 
+
+def gi_formula(x,n,m,v):
     '''
     Simple formula to calculate Getis-Ord Gi when given an array of values
     and the pre-calculate n, global mean, and global variance.    
     '''
-def gi_formula(x,n,m,v):
     k = np.sum(np.isfinite(x)).astype(np.int) # number of non-nan neighbors
     Gi =(np.nansum(x) - k*m) / np.sqrt((k * (n-1-k) * v) / (n-2))
     return Gi
 
-     '''
+
+def rasterGi(X,footprint,mode='nearest'):
+    '''
     Calculated Getis-Ord Gi Statistic of local autocorrelation on a raster.
     For vector-based operations, see the package PySAL.
     
@@ -72,10 +75,7 @@ def gi_formula(x,n,m,v):
     Ord, J.K. and A. Getis. 1995. Local Spatial Autocorrelation Statistics:
     Distribution Issues and an Application. Geographical Analysis, 27(4): 286-
     306. doi: 10.1111/j.1538-4632.1995.tb00912.x
-    
-    '''   
-def rasterGi(X,footprint,mode='nearest'):
-    
+    '''      
     # Cast to a float; these operations won't all work on integers
     X = X.astype(np.float)
 
