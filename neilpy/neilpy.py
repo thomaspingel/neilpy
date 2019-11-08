@@ -1080,3 +1080,4 @@ def colortable_shade(Z,name='swiss',cellsize=1):
     return RGB
 
 
+    
