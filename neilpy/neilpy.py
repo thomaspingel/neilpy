@@ -83,10 +83,8 @@ def rasterGi(X,footprint,mode='nearest'):
     # with a zero at the center.
     if np.isscalar(footprint):
         m = np.floor(footprint/2).astype(np.int)
-        w = np.ones((footprint,footprint))
-        w[m,m] = 0
-    else:
-        w = footprint
+        footprint = np.ones((footprint,footprint),dtype=np.int)
+        footprint[m,m] = 0
         
     # How many non-nans do we have in the array?
     n = np.sum(np.isfinite(X))
@@ -98,21 +96,21 @@ def rasterGi(X,footprint,mode='nearest'):
 
     # Within the strucutring element how many neighbors at each point?
     if np.all(np.isfinite(X)):
-        w_neighbors = np.sum(w) * np.ones(np.shape(X),dtype=np.int)
+        w_neighbors = np.sum(footprint) * np.ones(np.shape(X),dtype=np.int)
     else:
-        w_neighbors = ndi.filters.generic_filter(np.isfinite(X).astype(np.int),np.sum,footprint=w,mode=mode)
+        w_neighbors = ndi.filters.generic_filter(np.isfinite(X).astype(np.int),np.sum,footprint=footprint,mode=mode)
 
     # Calculate Gi
-    a = ndi.filters.generic_filter(X,np.nansum,footprint=w,mode=mode) - w_neighbors* mean_not_me
+    a = ndi.filters.generic_filter(X,np.nansum,footprint=footprint,mode=mode) - w_neighbors* mean_not_me
     b = np.sqrt((w_neighbors * (n-1-w_neighbors) * var_not_me) / (n-2))
     del mean_not_me, var_not_me
     Z = a / b
     del a,b
     
     # Calculate Z-scores for CIs of 10, 5, and 1 percent (adjust for tails)
-    a = st.norm.ppf(.95)
-    b = st.norm.ppf(.975)
-    c = st.norm.ppf(.995)
+    a = stats.norm.ppf(.95)
+    b = stats.norm.ppf(.975)
+    c = stats.norm.ppf(.995)
     
     # Create an ArcGIS-like Gi_Bin indicating CIs (90/95/99) for above-and-below
     Gi_Bin = np.zeros(np.shape(X)).astype(np.float)
