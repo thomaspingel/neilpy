@@ -103,7 +103,7 @@ def rasterGi(X,footprint,mode='nearest'):
         w_neighbors = ndi.filters.generic_filter(np.isfinite(X).astype(np.int),np.sum,footprint=w,mode=mode)
 
     # Calculate Gi
-    a = (ndi.filters.generic_filter(X,np.nansum,footprint=w,mode=mode)) - (w_neighbors* mean_not_me)
+    a = ndi.filters.generic_filter(X,np.nansum,footprint=w,mode=mode) - w_neighbors* mean_not_me
     b = np.sqrt((w_neighbors * (n-1-w_neighbors) * var_not_me) / (n-2))
     del mean_not_me, var_not_me
     Z = a / b
