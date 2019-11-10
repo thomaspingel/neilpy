@@ -209,4 +209,68 @@ def life_filter(neighborhood):
         if live_neighbors==3:
             result=1
     return result        
+
+#%%
+
+def esri_curvature(X,cellsize=1,kind='curvature'):
+    '''
+    A simple, pedagogical implementation of ESRI's curvature.  Call with, 
+    for example:
+
+        profile_curvature = ndi.filters.generic_filter(Z,esri_curvature,size=3,extra_keywords={'kind':'profile','cellsize':5})    
+
+    References:
+        https://www.usna.edu/Users/oceano/pguth/md_help/html/geomorph_curvature.htm
+        http://desktop.arcgis.com/en/arcmap/10.3/tools/spatial-analyst-toolbox/how-curvature-works.htm
+    '''
+    X = X.reshape((3,3)) 
     
+    # An inefficient, but pedagogically useful expression:
+    Z1 = X[0,0]
+    Z2 = X[0,1]
+    Z3 = X[0,2]
+    Z4 = X[1,0]
+    Z5 = X[1,1]
+    Z6 = X[1,2]
+    Z7 = X[2,0]
+    Z8 = X[2,1]
+    Z9 = X[2,2]
+    
+    # making some sub-calculations
+    A = ((Z1 + Z3 + Z7 + Z9)/4 - (Z2 + Z4 + Z6 + Z8)/2 + Z5)/(cellsize**4);
+    B = ((Z1 + Z3 - Z7 + Z9)/4 - (Z2 - Z8)/2)/(cellsize**3);
+    C = ((-Z1 + Z3 - Z7 + Z9)/4 + (Z4 - Z6)/2) / (cellsize**3);
+    D = (((Z4 + Z6) / 2) - Z5) / (cellsize**2);
+    E = (((Z2 + Z8) / 2) - Z5) / (cellsize**2);
+    F = (-Z1 + Z3 + Z7 - Z9) / (4*(cellsize**2));
+    G = (-Z4 + Z6) / (2*cellsize);
+    H = (Z2 - Z8) / (2*cellsize);
+    I = Z5;
+
+    if kind=='curvature':
+        curvature = -2 * (D + E)
+        if np.isnan(curvature):
+            curvature = 0
+        return 100*curvature
+        
+    elif kind=='plan':
+        # Plan curvature
+        P1 = D*(H**2)
+        P2 = E*(G**2)
+        P3 = F*G*H
+        P4 = (G**2) + (H**2);
+        plan_curvature = 2 * ((P1 + P2 - P3) / P4)
+        if np.isnan(plan_curvature):
+            plan_curvature = 0
+        return 100*plan_curvature
+    
+    elif kind=='profile':
+        P1 = D*(G**2)
+        P2 = E*(H**2)
+        P3 = F*G*H
+        P4 = (G**2) + (H**2)
+        profile_curvature = -2 * ((P1 + P2 + P3) / P4)
+        if np.isnan(profile_curvature):
+            profile_curvature = 0
+        return 100*profile_curvature
+  
