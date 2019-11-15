@@ -189,7 +189,87 @@ def aspect(Z,return_as='degrees',flat_as='nan'):
         return A
     
 #%%
-        
+def curvature(X,cellsize=1):
+    return -100*ndi.filters.laplace(X/cellsize)
+
+#%%        
+
+def esri_curvature(X,cellsize=1):
+
+    # Match common definition (Wood, ESRI, etc.) of cell size as L
+    L = cellsize
+    
+    Z1 = ashift(X,0)
+    Z2 = ashift(X,1)
+    Z3 = ashift(X,2)
+    Z4 = ashift(X,7)
+    Z6 = ashift(X,3)
+    Z7 = ashift(X,6)
+    Z8 = ashift(X,5)
+    Z9 = ashift(X,4)
+
+    A = ((Z1 + Z3 + Z7 + Z9)/4 - (Z2 + Z4 + Z6 + Z8)/2 + X)/(L**4);
+    B = ((Z1 + Z3 - Z7 + Z9)/4 - (Z2 - Z8)/2)/(L**3);
+    C = ((-Z1 + Z3 - Z7 + Z9)/4 + (Z4 - Z6)/2) / (L**3);
+    D = (((Z4 + Z6) / 2) - X) / (L**2);
+    E = (((Z2 + Z8) / 2) - X) / (L**2);
+    F = (-Z1 + Z3 + Z7 - Z9) / (4*(L**2));
+    G = (-Z4 + Z6) / (2*L);
+    H = (Z2 - Z8) / (2*L);
+
+    del Z1,Z2,Z3,Z4,Z6,Z7,Z8,Z9
+
+    curvature = -200 * (D + E)
+
+    P1 = D*(H**2);
+    P2 = E*(G**2);
+    P3 = F*G*H;
+    P4 = (G**2) + (H**2);
+    planc = -200 * ((P1 + P2 - P3) / P4);
+    planc[np.isnan(planc)] = 0;
+
+    P1 = D*(G**2);
+    P2 = E*(H**2);
+    P3 = F*G*H;
+    P4 = (G**2) + (H**2);
+    profc = 200 * ((P1 + P2 + P3) / P4);
+    profc[np.isnan(profc)] = 0;
+    
+    return curvature, plan_curvature, profile_curvature
+
+
+def evans_curvature(X,cellsize=1):
+
+    # Match common definition (Wood, ESRI, etc.) of cell size as L
+    L = cellsize
+    
+    z1 = ashift(X,0)
+    z2 = ashift(X,1)
+    z3 = ashift(X,2)
+    z4 = ashift(X,7)
+    z6 = ashift(X,3)
+    z7 = ashift(X,6)
+    z8 = ashift(X,5)
+    z9 = ashift(X,4)
+
+    # From Wood (1991), pages 91 and 92
+    A = (z1 + z3 + z4 + z6 + z7 + z9)/(6*L**2) - (z2+X+z8)/(3*L**2)
+    B = (z1  + z2 + z3 + z7 + z8 + z9)/(6*L**2) - (z4+X+z6)/(3*L**2)
+    C = (z3 + z7 - z1 -z9) / (4*L**2)
+    D = (z3+z6+z9-z1-z4-z7) / (6*L)
+    E = (z1+z2+z3-z7-z8-z9)/(6*L)
+    F = (2*(z2+z4+z6+z8)-(z1+z3+z7+z9)+5*X) / 9
+
+    del z1,z2,z3,z4,z6,z7,z8,z9
+
+    # From Wood, page 85-87; lon
+    profile_curvature = -200 * (A*D**2 + B*E**2 + C*D*E) / ((E**2+D**2)*((1+D**2+E**2)**1.5))
+    plan_curvature = 200 * (B*D**2 + A*E**2 - C*D*E) / ((E**2 + D**2)**1.5)
+    cross_curvature = -2 * (B*D**2 + A*E**2 - C*D*E) / (D**2 + E**2)
+    long_curvature = -2 * (A*D**2 + B*E**2 + C*D*E) / (D**2 + E**2)
+
+    return cross_curvature, plan_curvature, profile_curvature, long_curvature    
+    
 #%%
 # http://edndoc.esri.com/arcobjects/9.2/net/shared/geoprocessing/spatial_analyst_tools/how_hillshade_works.htm
 # ESRI's hillshade algorithm, but using the numpy versions of slope and aspect
