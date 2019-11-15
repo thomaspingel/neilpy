@@ -235,7 +235,7 @@ def esri_curvature(X,cellsize=1):
     profc = 200 * ((P1 + P2 + P3) / P4);
     profc[np.isnan(profc)] = 0;
     
-    return curvature, plan_curvature, profile_curvature
+    return curvature, planc, profc
 
 
 def evans_curvature(X,cellsize=1):

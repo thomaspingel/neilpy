@@ -3,11 +3,11 @@ from distutils.core import setup
 
 setup(
     name='NeilPy',
-    version='0.12',
+    version='0.13',
     packages=['neilpy',],
     license='MIT',
     long_description=open('README.txt').read(),
-    url='http://github.com/Unidata/MetPy',
+    url='https://github.com/thomaspingel/neilpy',
 
     author='Thomas Pingel',
     author_email='thomas.pingel@gmail.com',
