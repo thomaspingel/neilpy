@@ -225,6 +225,8 @@ def esri_curvature(X,cellsize=1,kind='curvature'):
     '''
     X = X.reshape((3,3)) 
     
+    L = cellsize
+    
     # An inefficient, but pedagogically useful expression:
     Z1 = X[0,0]
     Z2 = X[0,1]
@@ -237,40 +239,37 @@ def esri_curvature(X,cellsize=1,kind='curvature'):
     Z9 = X[2,2]
     
     # making some sub-calculations
-    A = ((Z1 + Z3 + Z7 + Z9)/4 - (Z2 + Z4 + Z6 + Z8)/2 + Z5)/(cellsize**4);
-    B = ((Z1 + Z3 - Z7 + Z9)/4 - (Z2 - Z8)/2)/(cellsize**3);
-    C = ((-Z1 + Z3 - Z7 + Z9)/4 + (Z4 - Z6)/2) / (cellsize**3);
-    D = (((Z4 + Z6) / 2) - Z5) / (cellsize**2);
-    E = (((Z2 + Z8) / 2) - Z5) / (cellsize**2);
-    F = (-Z1 + Z3 + Z7 - Z9) / (4*(cellsize**2));
-    G = (-Z4 + Z6) / (2*cellsize);
-    H = (Z2 - Z8) / (2*cellsize);
-    I = Z5;
+    A = ((Z1 + Z3 + Z7 + Z9)/4 - (Z2 + Z4 + Z6 + Z8)/2 + Z5)/(L**4);
+    B = ((Z1 + Z3 - Z7 + Z9)/4 - (Z2 - Z8)/2)/(L**3);
+    C = ((-Z1 + Z3 - Z7 + Z9)/4 + (Z4 - Z6)/2) / (L**3);
+    D = (((Z4 + Z6) / 2) - Z5) / (L**2);
+    E = (((Z2 + Z8) / 2) - Z5) / (L**2);
+    F = (-Z1 + Z3 + Z7 - Z9) / (4*(L**2));
+    G = (-Z4 + Z6) / (2*L);
+    H = (Z2 - Z8) / (2*L);
 
     if kind=='curvature':
-        curvature = -2 * (D + E)
+        curvature = -200 * (D + E)
         if np.isnan(curvature):
             curvature = 0
-        return 100*curvature
+        return curvature
         
     elif kind=='plan':
         # Plan curvature
-        P1 = D*(H**2)
-        P2 = E*(G**2)
-        P3 = F*G*H
+        P1 = D*(H**2);
+        P2 = E*(G**2);
+        P3 = F*G*H;
         P4 = (G**2) + (H**2);
-        plan_curvature = 2 * ((P1 + P2 - P3) / P4)
-        if np.isnan(plan_curvature):
-            plan_curvature = 0
-        return 100*plan_curvature
+        planc = -200 * ((P1 + P2 - P3) / P4);
+        planc[np.isnan(planc)] = 0;
+        return planc
     
     elif kind=='profile':
-        P1 = D*(G**2)
-        P2 = E*(H**2)
-        P3 = F*G*H
-        P4 = (G**2) + (H**2)
-        profile_curvature = -2 * ((P1 + P2 + P3) / P4)
-        if np.isnan(profile_curvature):
-            profile_curvature = 0
-        return 100*profile_curvature
+        P1 = D*(G**2);
+        P2 = E*(H**2);
+        P3 = F*G*H;
+        P4 = (G**2) + (H**2);
+        profc = 200 * ((P1 + P2 + P3) / P4);
+        profc[np.isnan(profc)] = 0;
+        return profc
   
