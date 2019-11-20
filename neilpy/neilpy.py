@@ -221,6 +221,7 @@ def esri_curvature(X,cellsize=1):
 
     curvature = -200 * (D + E)
 
+    np.seterr(divide='ignore', invalid='ignore')
     P1 = D*(H**2);
     P2 = E*(G**2);
     P3 = F*G*H;
@@ -234,6 +235,12 @@ def esri_curvature(X,cellsize=1):
     P4 = (G**2) + (H**2);
     profc = 200 * ((P1 + P2 + P3) / P4);
     profc[np.isnan(profc)] = 0;
+    np.seterr(divide='warn', invalid='warn')
+    
+    # Fix nans
+    profc[np.isnan(profc) & np.isfinite(X)] = 0
+    planc[np.isnan(planc) & np.isfinite(X)] = 0
+    curvature[np.isnan(curvature) & np.isfinite(X)] = 0
     
     return curvature, planc, profc
 
@@ -263,10 +270,20 @@ def evans_curvature(X,cellsize=1):
     del z1,z2,z3,z4,z6,z7,z8,z9
 
     # From Wood, page 85-87; lon
+    np.seterr(divide='ignore', invalid='ignore')
     profile_curvature = -200 * (A*D**2 + B*E**2 + C*D*E) / ((E**2+D**2)*((1+D**2+E**2)**1.5))
     plan_curvature = 200 * (B*D**2 + A*E**2 - C*D*E) / ((E**2 + D**2)**1.5)
     cross_curvature = -2 * (B*D**2 + A*E**2 - C*D*E) / (D**2 + E**2)
     long_curvature = -2 * (A*D**2 + B*E**2 + C*D*E) / (D**2 + E**2)
+    np.seterr(divide='warn', invalid='warn')
+    
+    # Fix nans
+    profile_curvature[np.isnan(profile_curvature) & np.isfinite(X)] = 0
+    plan_curvature[np.isnan(plan_curvature) & np.isfinite(X)] = 0
+    cross_curvature[np.isnan(cross_curvature) & np.isfinite(X)] = 0
+    long_curvature[np.isnan(long_curvature) & np.isfinite(X)] = 0
+    
+    
 
     return cross_curvature, plan_curvature, profile_curvature, long_curvature    
     
