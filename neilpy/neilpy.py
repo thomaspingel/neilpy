@@ -51,7 +51,8 @@ neilpy_dir = os.path.dirname(inspect.stack()[0][1])
 
 '''
 Simple formula to calculate Getis-Ord Gi when given an array of values
-and the pre-calculate n, global mean, and global variance.    
+and the pre-calculate n, global mean, and global variance. You probably don't
+want to use this function.
 '''
     
 def gi_formula(x,n,m,v):
@@ -75,7 +76,7 @@ References
 Ord, J.K. and A. Getis. 1995. Local Spatial Autocorrelation Statistics:
 Distribution Issues and an Application. Geographical Analysis, 27(4): 286-
 306. doi: 10.1111/j.1538-4632.1995.tb00912.x
-'''      
+'''
 
 def rasterGi(X,footprint,mode='nearest',apply_correction=False):
     # Cast to a float; these operations won't all work on integers
