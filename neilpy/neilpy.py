@@ -60,7 +60,7 @@ def gi_formula(x,n,m,v):
     return Gi
 
 
-def rasterGi(X,footprint,mode='nearest'):
+def rasterGi(X,footprint,mode='nearest',apply_correction=False):
     '''
     Calculated Getis-Ord Gi Statistic of local autocorrelation on a raster.
     For vector-based operations, see the package PySAL.
@@ -93,19 +93,29 @@ def rasterGi(X,footprint,mode='nearest'):
     # pixel, excluding that pixel.
     mean_not_me = (np.nansum(X) - X) / (n-1)
     var_not_me = ((np.nansum(X**2) - X**2) / (n-1)) - mean_not_me**2
+    
+    mean_not_me[np.isnan(X)] = np.nan
+    var_not_me[np.isnan(X)] = np.nan
 
     # Within the strucutring element how many neighbors at each point?
     if np.all(np.isfinite(X)):
         w_neighbors = np.sum(footprint) * np.ones(np.shape(X),dtype=np.int)
     else:
         w_neighbors = ndi.filters.generic_filter(np.isfinite(X).astype(np.int),np.sum,footprint=footprint,mode=mode)
+        w_neighbors = w_neighbors.astype(np.float)
+        w_neighbors[np.isnan(X)] = np.nan
 
     # Calculate Gi
     a = ndi.filters.generic_filter(X,np.nansum,footprint=footprint,mode=mode) - w_neighbors* mean_not_me
-    b = np.sqrt((w_neighbors * (n-1-w_neighbors) * var_not_me) / (n-2))
+    b = np.sqrt((w_neighbors / (n-2)) * (n-1-w_neighbors) * var_not_me)
     del mean_not_me, var_not_me
     Z = a / b
     del a,b
+    
+    Z[np.isnan(X)] = np.nan
+    
+    if apply_correction == True:
+        Z = (Z-np.nanmean(Z)) / np.nanstd(Z)
     
     # Calculate Z-scores for CIs of 10, 5, and 1 percent (adjust for tails)
     a = stats.norm.ppf(.95)
@@ -120,6 +130,7 @@ def rasterGi(X,footprint,mode='nearest'):
     Gi_Bin[Z<-a] = -1
     Gi_Bin[Z<-b] = -2
     Gi_Bin[Z<-c] = -3
+    Gi_Bin[np.isnan(X)] = np.nan
     
     # Return the binned value and the Z-score.  P is not returned since this
     # is directly calculable from Z
@@ -286,6 +297,18 @@ def evans_curvature(X,cellsize=1):
     
 
     return cross_curvature, plan_curvature, profile_curvature, long_curvature    
+#%%
+
+def imread(fn,geospatial=True):
+    with rasterio.open(fn) as src:
+        X = src.read()
+        transform = src.transform
+        cellsize = transform[0]
+        profile = src.profile
+    X = np.squeeze(X)
+        
+    return X, transform, cellsize, profile
+
     
 #%%
 # http://edndoc.esri.com/arcobjects/9.2/net/shared/geoprocessing/spatial_analyst_tools/how_hillshade_works.htm
@@ -1177,4 +1200,6 @@ def colortable_shade(Z,name='swiss',cellsize=1):
     return RGB
 
 
-    
+#%%
+def rmse(X):
+    return np.sqrt(np.nansum(X**2)/np.size(X))
