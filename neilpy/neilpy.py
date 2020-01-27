@@ -289,6 +289,10 @@ def evans_curvature(X,cellsize=1):
     plan_curvature = 200 * (B*D**2 + A*E**2 - C*D*E) / ((E**2 + D**2)**1.5)
     cross_curvature = -2 * (B*D**2 + A*E**2 - C*D*E) / (D**2 + E**2)
     long_curvature = -2 * (A*D**2 + B*E**2 + C*D*E) / (D**2 + E**2)
+
+    # Calculate tangential curvature based on Krcho (1991) equation as seen in Schmidt et al (2003)
+    tan_curvature = cross_curvature / (D**2 + E**2 + 1)**.5
+    
     np.seterr(divide='warn', invalid='warn')
     
     # Fix nans
@@ -296,10 +300,11 @@ def evans_curvature(X,cellsize=1):
     plan_curvature[np.isnan(plan_curvature) & np.isfinite(X)] = 0
     cross_curvature[np.isnan(cross_curvature) & np.isfinite(X)] = 0
     long_curvature[np.isnan(long_curvature) & np.isfinite(X)] = 0
+    tan_curvature[np.isnan(tan_curvature) & np.isfinite(X)] = 0
     
     
 
-    return cross_curvature, plan_curvature, profile_curvature, long_curvature    
+    return cross_curvature, plan_curvature, profile_curvature, long_curvature, tan_curvature   
 #%%
 
 def imread(fn,geospatial=True):
