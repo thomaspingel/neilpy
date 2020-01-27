@@ -291,7 +291,7 @@ def evans_curvature(X,cellsize=1):
     long_curvature = -2 * (A*D**2 + B*E**2 + C*D*E) / (D**2 + E**2)
 
     # Calculate tangential curvature based on Krcho (1991) equation as seen in Schmidt et al (2003)
-    tan_curvature = cross_curvature / (D**2 + E**2 + 1)**.5
+    tan_curvature = cross_curvature / ((D**2 + E**2 + 1)**.5)
     
     np.seterr(divide='warn', invalid='warn')
     
