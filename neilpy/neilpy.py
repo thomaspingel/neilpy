@@ -49,33 +49,36 @@ neilpy_dir = os.path.dirname(inspect.stack()[0][1])
 
 #%% Spatial Autocorrelation Functions
 
-
+'''
+Simple formula to calculate Getis-Ord Gi when given an array of values
+and the pre-calculate n, global mean, and global variance. You probably don't
+want to use this function.
+'''
+    
 def gi_formula(x,n,m,v):
-    '''
-    Simple formula to calculate Getis-Ord Gi when given an array of values
-    and the pre-calculate n, global mean, and global variance.    
-    '''
+
     k = np.sum(np.isfinite(x)).astype(np.int) # number of non-nan neighbors
     Gi =(np.nansum(x) - k*m) / np.sqrt((k * (n-1-k) * v) / (n-2))
     return Gi
 
 
-def rasterGi(X,footprint,mode='nearest'):
-    '''
-    Calculated Getis-Ord Gi Statistic of local autocorrelation on a raster.
-    For vector-based operations, see the package PySAL.
-    
-    The user can supply either a bineary footprint (structuring element) or
-    can supply a scaler value to indicate a size of structuring element.  In
-    this case, a square structuring element with zero at its center is used.
-    Users should supply odd-dimension neighborhoods (3x3, 5x5, etc).
-    
-    References
-    ----------
-    Ord, J.K. and A. Getis. 1995. Local Spatial Autocorrelation Statistics:
-    Distribution Issues and an Application. Geographical Analysis, 27(4): 286-
-    306. doi: 10.1111/j.1538-4632.1995.tb00912.x
-    '''      
+'''
+Calculated Getis-Ord Gi Statistic of local autocorrelation on a raster.
+For vector-based operations, see the package PySAL.
+
+The user can supply either a bineary footprint (structuring element) or
+can supply a scaler value to indicate a size of structuring element.  In
+this case, a square structuring element with zero at its center is used.
+Users should supply odd-dimension neighborhoods (3x3, 5x5, etc).
+
+References
+----------
+Ord, J.K. and A. Getis. 1995. Local Spatial Autocorrelation Statistics:
+Distribution Issues and an Application. Geographical Analysis, 27(4): 286-
+306. doi: 10.1111/j.1538-4632.1995.tb00912.x
+'''
+
+def rasterGi(X,footprint,mode='nearest',apply_correction=False):
     # Cast to a float; these operations won't all work on integers
     X = X.astype(np.float)
 
@@ -93,19 +96,29 @@ def rasterGi(X,footprint,mode='nearest'):
     # pixel, excluding that pixel.
     mean_not_me = (np.nansum(X) - X) / (n-1)
     var_not_me = ((np.nansum(X**2) - X**2) / (n-1)) - mean_not_me**2
+    
+    mean_not_me[np.isnan(X)] = np.nan
+    var_not_me[np.isnan(X)] = np.nan
 
     # Within the strucutring element how many neighbors at each point?
     if np.all(np.isfinite(X)):
         w_neighbors = np.sum(footprint) * np.ones(np.shape(X),dtype=np.int)
     else:
         w_neighbors = ndi.filters.generic_filter(np.isfinite(X).astype(np.int),np.sum,footprint=footprint,mode=mode)
+        w_neighbors = w_neighbors.astype(np.float)
+        w_neighbors[np.isnan(X)] = np.nan
 
     # Calculate Gi
     a = ndi.filters.generic_filter(X,np.nansum,footprint=footprint,mode=mode) - w_neighbors* mean_not_me
-    b = np.sqrt((w_neighbors * (n-1-w_neighbors) * var_not_me) / (n-2))
+    b = np.sqrt((w_neighbors / (n-2)) * (n-1-w_neighbors) * var_not_me)
     del mean_not_me, var_not_me
     Z = a / b
     del a,b
+    
+    Z[np.isnan(X)] = np.nan
+    
+    if apply_correction == True:
+        Z = (Z-np.nanmean(Z)) / np.nanstd(Z)
     
     # Calculate Z-scores for CIs of 10, 5, and 1 percent (adjust for tails)
     a = stats.norm.ppf(.95)
@@ -120,6 +133,7 @@ def rasterGi(X,footprint,mode='nearest'):
     Gi_Bin[Z<-a] = -1
     Gi_Bin[Z<-b] = -2
     Gi_Bin[Z<-c] = -3
+    Gi_Bin[np.isnan(X)] = np.nan
     
     # Return the binned value and the Z-score.  P is not returned since this
     # is directly calculable from Z
@@ -221,6 +235,7 @@ def esri_curvature(X,cellsize=1):
 
     curvature = -200 * (D + E)
 
+    np.seterr(divide='ignore', invalid='ignore')
     P1 = D*(H**2);
     P2 = E*(G**2);
     P3 = F*G*H;
@@ -234,6 +249,12 @@ def esri_curvature(X,cellsize=1):
     P4 = (G**2) + (H**2);
     profc = 200 * ((P1 + P2 + P3) / P4);
     profc[np.isnan(profc)] = 0;
+    np.seterr(divide='warn', invalid='warn')
+    
+    # Fix nans
+    profc[np.isnan(profc) & np.isfinite(X)] = 0
+    planc[np.isnan(planc) & np.isfinite(X)] = 0
+    curvature[np.isnan(curvature) & np.isfinite(X)] = 0
     
     return curvature, planc, profc
 
@@ -263,12 +284,39 @@ def evans_curvature(X,cellsize=1):
     del z1,z2,z3,z4,z6,z7,z8,z9
 
     # From Wood, page 85-87; lon
+    np.seterr(divide='ignore', invalid='ignore')
     profile_curvature = -200 * (A*D**2 + B*E**2 + C*D*E) / ((E**2+D**2)*((1+D**2+E**2)**1.5))
     plan_curvature = 200 * (B*D**2 + A*E**2 - C*D*E) / ((E**2 + D**2)**1.5)
-    cross_curvature = -2 * (B*D**2 + A*E**2 - C*D*E) / (D**2 + E**2)
-    long_curvature = -2 * (A*D**2 + B*E**2 + C*D*E) / (D**2 + E**2)
+    cross_curvature = -200 * (B*D**2 + A*E**2 - C*D*E) / (D**2 + E**2)
+    long_curvature = -200 * (A*D**2 + B*E**2 + C*D*E) / (D**2 + E**2)
 
-    return cross_curvature, plan_curvature, profile_curvature, long_curvature    
+    # Calculate tangential curvature based on Krcho (1991) equation as seen in Schmidt et al (2003)
+    tan_curvature = cross_curvature / ((D**2 + E**2 + 1)**.5)
+    
+    np.seterr(divide='warn', invalid='warn')
+    
+    # Fix nans
+    profile_curvature[np.isnan(profile_curvature) & np.isfinite(X)] = 0
+    plan_curvature[np.isnan(plan_curvature) & np.isfinite(X)] = 0
+    cross_curvature[np.isnan(cross_curvature) & np.isfinite(X)] = 0
+    long_curvature[np.isnan(long_curvature) & np.isfinite(X)] = 0
+    tan_curvature[np.isnan(tan_curvature) & np.isfinite(X)] = 0
+    
+    
+
+    return cross_curvature, plan_curvature, profile_curvature, long_curvature, tan_curvature   
+#%%
+
+def imread(fn,geospatial=True):
+    with rasterio.open(fn) as src:
+        X = src.read()
+        transform = src.transform
+        cellsize = transform[0]
+        profile = src.profile
+    X = np.squeeze(X)
+        
+    return X, transform, cellsize, profile
+
     
 #%%
 # http://edndoc.esri.com/arcobjects/9.2/net/shared/geoprocessing/spatial_analyst_tools/how_hillshade_works.htm
@@ -1160,4 +1208,6 @@ def colortable_shade(Z,name='swiss',cellsize=1):
     return RGB
 
 
-    
+#%%
+def rmse(X):
+    return np.sqrt(np.nansum(X**2)/np.size(X))
