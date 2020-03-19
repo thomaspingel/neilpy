@@ -6,7 +6,7 @@ setup(
     version='0.15',
     packages=['neilpy',],
     license='MIT',
-    long_description=open('README.txt').read(),
+    long_description=open('README.md').read(),
     url='https://github.com/thomaspingel/neilpy',
 
     author='Thomas Pingel',
