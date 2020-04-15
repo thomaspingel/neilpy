@@ -251,10 +251,13 @@ def esri_curvature(X,cellsize=1):
     profc[np.isnan(profc)] = 0;
     np.seterr(divide='warn', invalid='warn')
     
-    # Fix nans
+    # Fix nans; this likely needs another look
     profc[np.isnan(profc) & np.isfinite(X)] = 0
     planc[np.isnan(planc) & np.isfinite(X)] = 0
     curvature[np.isnan(curvature) & np.isfinite(X)] = 0
+    
+    # Calibrate to actual observed ESRI output:
+    curvature = 4 * curvature
     
     return curvature, planc, profc
 
@@ -1211,3 +1214,20 @@ def colortable_shade(Z,name='swiss',cellsize=1):
 #%%
 def rmse(X):
     return np.sqrt(np.nansum(X**2)/np.size(X))
+
+#%%
+    
+'''
+Convenience function to split a raster into r and c pieces. 
+Returns a list of lists, in row-column form. 
+Example:
+    X = tifffile.imread('bigraster.tif')
+    X = cutter(X,3,6)
+    upper_right_piece = X[0][5]
+    
+See also: "Split Raster" tool in ArcGIS.
+'''
+    
+def cutter(x,r,c):
+    return [np.hsplit(i,c) for i in np.vsplit(x,r)]
+    
