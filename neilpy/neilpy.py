@@ -44,7 +44,52 @@ from skimage.morphology import disk
 # Global variable to help load data files (PNG-based color tables, etc.)
 neilpy_dir = os.path.dirname(inspect.stack()[0][1])
 
+#%% Reading data - a handy wrapper to spare some pain
 
+def imread(fn, return_metadata=True, fix_nodata=True, force_float=False):
+
+    with rasterio.open(fn) as src:
+        metadata = {}
+        metadata['count'] = src.count
+        metadata['crs'] = src.crs
+        metadata['transform'] = src.transform
+        metadata['bounds'] = src.bounds
+        metadata['width'] = src.width
+        metadata['height'] = src.height
+        metadata['dtype'] = src.dtypes[0]  # This returns an array.  Safe to assume all the same?
+        metadata['nodata_value'] = src.nodatavals[0]
+        
+        if src.count > 1:
+            X = np.stack([src.read(i+1) for i in range(src.count)],axis=2)
+        else:
+            X = src.read(1)
+    
+    # If asked to force into float, and not already in float, convert.
+    if force_float and metadata['dtype'] not in ['float32','float64']:
+        X = X.astype(np.float32)
+        metadata['dtype'] = 'float32'
+    
+    # Fix nodata unless told otherwise
+    if fix_nodata:
+        if metadata['dtype'] in ['float32','float64']:
+            X[X==metadata['nodata_value']] = np.nan
+        else:
+            print('Warning: fix_nodata requested, but ' + metadata['dtype'] + 
+                  ' cannot be converted to np.nan.')
+        
+    # Calculate cellsize.  If directions are within a tolerance, assume the
+    # mean
+    cellsizes = np.abs(np.array((metadata['transform'][0],
+                                 metadata['transform'][4])))
+    if np.diff(cellsizes) < .00000001:
+        metadata['cellsize'] = np.mean(cellsizes)
+    else:
+        metadata['cellsize'] = cellsizes
+        
+    if return_metadata:
+        return X, metadata
+    else:
+        return X
 
 
 #%% Spatial Autocorrelation Functions
