@@ -256,9 +256,6 @@ def esri_curvature(X,cellsize=1):
     planc[np.isnan(planc) & np.isfinite(X)] = 0
     curvature[np.isnan(curvature) & np.isfinite(X)] = 0
     
-    # Calibrate to actual observed ESRI output:
-    curvature = 4 * curvature
-    
     return curvature, planc, profc
 
 
