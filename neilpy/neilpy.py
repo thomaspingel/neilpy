@@ -46,7 +46,7 @@ neilpy_dir = os.path.dirname(inspect.stack()[0][1])
 
 #%% Reading data - a handy wrapper to spare some pain
 
-def imread(fn, return_metadata=True, fix_nodata=True, force_float=False):
+def imread(fn, return_metadata=True, fix_nodata=False, force_float=False):
 
     with rasterio.open(fn) as src:
         metadata = {}
