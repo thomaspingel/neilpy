@@ -350,18 +350,6 @@ def evans_curvature(X,cellsize=1):
     
 
     return cross_curvature, plan_curvature, profile_curvature, long_curvature, tan_curvature   
-#%%
-
-def imread(fn,geospatial=True):
-    with rasterio.open(fn) as src:
-        X = src.read()
-        transform = src.transform
-        cellsize = transform[0]
-        profile = src.profile
-    X = np.squeeze(X)
-        
-    return X, transform, cellsize, profile
-
     
 #%%
 # http://edndoc.esri.com/arcobjects/9.2/net/shared/geoprocessing/spatial_analyst_tools/how_hillshade_works.htm
