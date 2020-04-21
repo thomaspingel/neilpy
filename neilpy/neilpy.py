@@ -267,6 +267,17 @@ def esri_curvature(X,cellsize=1):
     Z8 = ashift(X,5)
     Z9 = ashift(X,4)
 
+    # In cases where data are missing, ESRI seems to (?) just fill
+    # in the original center pixel instead:
+    Z1[np.isnan(Z1)] = X[np.isnan(Z1)]
+    Z2[np.isnan(Z2)] = X[np.isnan(Z2)]
+    Z3[np.isnan(Z3)] = X[np.isnan(Z3)]
+    Z4[np.isnan(Z4)] = X[np.isnan(Z4)]
+    Z6[np.isnan(Z6)] = X[np.isnan(Z6)]
+    Z7[np.isnan(Z7)] = X[np.isnan(Z7)]
+    Z8[np.isnan(Z8)] = X[np.isnan(Z8)]
+    Z9[np.isnan(Z9)] = X[np.isnan(Z9)]
+
     A = ((Z1 + Z3 + Z7 + Z9)/4 - (Z2 + Z4 + Z6 + Z8)/2 + X)/(L**4);
     B = ((Z1 + Z3 - Z7 + Z9)/4 - (Z2 - Z8)/2)/(L**3);
     C = ((-Z1 + Z3 - Z7 + Z9)/4 + (Z4 - Z6)/2) / (L**3);
@@ -297,12 +308,12 @@ def esri_curvature(X,cellsize=1):
     np.seterr(divide='warn', invalid='warn')
     
     # Fix nans; this likely needs another look
-    profc[np.isnan(profc) & np.isfinite(X)] = 0
-    planc[np.isnan(planc) & np.isfinite(X)] = 0
-    curvature[np.isnan(curvature) & np.isfinite(X)] = 0
+    #profc[np.isnan(profc) & np.isfinite(X)] = 0
+    #planc[np.isnan(planc) & np.isfinite(X)] = 0
+    #curvature[np.isnan(curvature) & np.isfinite(X)] = 0
     
     return curvature, planc, profc
-
+#%%
 
 def evans_curvature(X,cellsize=1):
 
