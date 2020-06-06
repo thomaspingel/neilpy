@@ -41,23 +41,44 @@ from PIL import Image
 from skimage.util import apply_parallel
 from skimage.morphology import disk
 
+from pyproj import Transformer
+
 # Global variable to help load data files (PNG-based color tables, etc.)
 neilpy_dir = os.path.dirname(inspect.stack()[0][1])
+
+
+#%% Coordinate transformation
+
+'''
+EPSG Hints:
+Google searches that hit epsg.io are the fastest:
+Google: "wgs84 zone 59N" hits
+https://epsg.io/32759
+
+wgs84 = 4326
+
+WGS84 UTM is 326xx or 327xx (e.g., zone 17 is 32617; lookup with epsg.io)
+'''
+
+def coord_transform(x,y,from_epsg,to_epsg):
+    transformer = Transformer.from_crs(from_epsg,to_epsg,always_xy=True)
+    return transformer.transform(x,y)
 
 #%% Reading data - a handy wrapper to spare some pain
 
 def imread(fn, return_metadata=True, fix_nodata=False, force_float=False):
 
     with rasterio.open(fn) as src:
-        metadata = {}
-        metadata['count'] = src.count
-        metadata['crs'] = src.crs
-        metadata['transform'] = src.transform
+        metadata = src.profile
+        #metadata['count'] = src.count
+        #metadata['crs'] = src.crs
+        #metadata['transform'] = src.transform
         metadata['bounds'] = src.bounds
-        metadata['width'] = src.width
-        metadata['height'] = src.height
+        #metadata['width'] = src.width
+        #metadata['height'] = src.height
         metadata['dtype'] = src.dtypes[0]  # This returns an array.  Safe to assume all the same?
-        metadata['nodata_value'] = src.nodatavals[0]
+        #metadata['nodata_value'] = src.nodatavals[0]
+        
         
         if src.count > 1:
             X = np.stack([src.read(i+1) for i in range(src.count)],axis=2)
@@ -72,7 +93,7 @@ def imread(fn, return_metadata=True, fix_nodata=False, force_float=False):
     # Fix nodata unless told otherwise
     if fix_nodata:
         if metadata['dtype'] in ['float32','float64']:
-            X[X==metadata['nodata_value']] = np.nan
+            X[X==metadata['nodata']] = np.nan
         else:
             print('Warning: fix_nodata requested, but ' + metadata['dtype'] + 
                   ' cannot be converted to np.nan.')
@@ -90,6 +111,20 @@ def imread(fn, return_metadata=True, fix_nodata=False, force_float=False):
         return X, metadata
     else:
         return X
+    
+    
+#%%
+
+# TODO: check # bands, and write these out properly; 
+#       ATM, geospatial write out only supported for a single layer
+# TODO: support writing of indexed /colormapped data
+
+def imwrite(fn,im,metadata=None):
+    if metadata is None:
+        imageio.imwrite(fn,im)
+    else:
+        with rasterio.open(fn, 'w', **metadata) as dst:
+            dst.write(im, 1) 
 
 
 #%% Spatial Autocorrelation Functions
