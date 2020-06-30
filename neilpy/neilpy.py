@@ -1306,4 +1306,99 @@ See also: "Split Raster" tool in ArcGIS.
     
 def cutter(x,r,c):
     return [np.hsplit(i,c) for i in np.vsplit(x,r)]
+
+
+#%%
+'''
+Convenience function to change an array from min/max to 0/1 or a variety
+of other mappings.  Simply specify calculate values to xrange parameter, or 
+use simple keywords like min,max,mean,median.  You can specify more than just
+two endpoints as well, letting you simply specify a piecewise curve re-mapping
+
+Examples:
+    Z, metadata = neilpy.imread('dem.tif')
+    Zn = neilpy.normalize(N)
     
+    or
+    Zn = neilpy.normalize(Z,yrange=[-1,1])
+    
+    or
+    Zn = neilpy.normalize(Z,xrange=['min','mean','max'],yrange=[-1,0,1])
+    
+    or
+    Zmax = np.nanmax(Z)
+    Zmin = np.nanmin(Z)
+    Zmean = np.nanmean(Z)
+    Zn = neilpy.normalize(Z,xrange=[Zmin,Zmean,Zmax],yrange=[-1,0,1])
+'''
+
+def normalize(X,xrange=['min','max'],yrange=[0,1]):
+    xrange_fixed = []
+    for item in xrange:
+        if item=='max':
+            item = np.nanmax(X)
+        elif item=='min':
+            item = np.nanmin(X)
+        elif item=='mean':
+            item = np.nanmean(X)
+        elif item=='median':
+            item = np.nanmedian(X)
+        xrange_fixed.append(item)
+    return np.interp(X,xrange_fixed,yrange)
+
+#%%
+'''
+An implementation of Brassel's 1974 atmospheric correction routine for shaded
+relief images.
+
+Parameters:
+    k, which controls the amount of correction. Should be >= 1.  This is the 
+        only required parameter.
+    flat, which is a value (integer or 0-1) that specifies the shading of 
+        flat areas.  Automatically set to 180, for a standard hillshade.
+    Zmid, which lets you specify a midpoint for the effects.  This is usually
+        the average of the maximum and minimum values, but can be set as 
+        described by Jenny (2000).  Setting to the mean or median is nice.
+    reverse, a boolean value to de-emphasize higher areas
+    C2, a tonal adjustment value, to be set between -1 and 1. 
+'''
+
+def brassel_atmospheric_perspective(H,Z,k,flat=180,Zmid=None,reverse=False,C2=0):
+    
+    if k<1:
+        raise('k must be equal to or greater than one.')
+    
+    was_int = False
+    if np.any(H>1):
+        H = H / 255
+        was_int = True
+    
+    if flat>1:
+        flat = flat / 255
+    
+    Zmin = np.nanmin(Z)
+    Zmax = np.nanmax(Z)
+    
+    if Zmid is None:
+        Zstar = (Z - ((Zmax+Zmin) / 2)) / ((Zmax-Zmin)/2)
+    else:
+        Zstar = normalize(Z,xrange=[Zmin,Zmid,Zmax],yrange=[-1,0,1])
+        
+    if reverse:
+        Zstar = -Zstar
+    
+    exponent = np.e**(Zstar*np.log(k))
+    
+    H_new = ((H - flat) * exponent) + flat
+    
+    H_new[H_new<0] = 0
+    H_new[H_new>1] = 1
+    
+    if C2 != 0:
+        H_new = H_new + (C2 * (Zstar-1))/2
+    
+    if was_int:
+        H_new = np.round(255*H_new).astype(np.uint8)
+        
+    
+    return H_new
