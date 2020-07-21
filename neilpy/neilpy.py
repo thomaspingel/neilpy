@@ -36,11 +36,12 @@ from scipy import stats
 from scipy import sparse
 from scipy import linalg
 from scipy.signal import convolve2d
+from scipy.signal import fftconvolve
 from scipy import interpolate
 from PIL import Image
 from skimage.util import apply_parallel
 from skimage.morphology import disk
-
+import cv2
 
 from pyproj import Transformer
 
@@ -797,6 +798,11 @@ def ashift(surface,direction,n=1,fillnan=False):
 
 #%%
 
+
+
+
+#%%
+
 def openness(Z,cellsize=1,lookup_pixels=1,neighbors=np.arange(8),skyview=False):
 
     nrows, ncols = np.shape(Z)
@@ -1404,3 +1410,37 @@ def brassel_atmospheric_perspective(H,Z,k,flat=180,Zmid=None,reverse=False,C2=0)
         
     
     return H_new
+
+#%%
+
+'''
+References:
+    http://www.jennessent.com/downloads/TPI-poster-TNC_18x22.pdf
+    http://www.jennessent.com/downloads/TPI_Documentation_online.pdf
+'''
+
+def topographic_position_index(X,radius=1,standardize=True):
+
+    # If radius is one, use a 3x3 structuring element, otherwise, use this
+    # as the radius of a disk       
+    if radius==1:
+        strel = np.ones((3,3),dtype=np.uint8)
+    else:
+        strel = disk(radius)
+    # But remove the center, so we don't include the center pixel in the 
+    # mean calculation
+    strel[radius,radius] = 0
+    # Define the weights (divide by total number of ones)
+    strel = strel / np.sum(strel)
+   
+    mean = ndi.convolve(X,strel,mode='nearest')
+    result = X - mean
+    
+    # If standardization is requested, construct a standard deviation filter
+    # and divide the result by that
+    if standardize:
+        # https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance
+        sd = np.sqrt(np.mean(ndi.convolve(X**2,strel,mode='nearest')) - np.mean(result)**2)
+        result = result / sd
+    
+    return result
