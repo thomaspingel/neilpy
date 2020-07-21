@@ -41,10 +41,12 @@ from PIL import Image
 from skimage.util import apply_parallel
 from skimage.morphology import disk
 
+
 from pyproj import Transformer
 
 # Global variable to help load data files (PNG-based color tables, etc.)
 neilpy_dir = os.path.dirname(inspect.stack()[0][1])
+
 
 
 #%% Coordinate transformation

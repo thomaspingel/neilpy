@@ -9,8 +9,41 @@ import numpy as np
 
 
 
+#%%
+
+
+def test(X,smooth=False):
+        if X.ndim > 1:
+        X = X.ravel()
+    n = np.size(X)
+    if np%2 is not 1:
+        print(n)
+    center = np.floor(n / 2).astype(np.int)
+    
+    
+#%%
+
+def topographic_position_index(X):
+
+    if X.ndim > 1:
+        X = X.ravel()
+    n = np.size(X)
+
+    center = np.floor(n / 2).astype(np.int)
+    center_value = X[center]
+    rest = np.delete(X,center)
+    
+    value = (center_value - np.nanmean(rest)) / np.nanstd(rest)
+    
+    if np.isnan(value) and np.isfinite(center_value):
+        value = 0
+    
+    return value
+
 
 #%%
+
+
 
 def terrain_ruggedness(X):
     '''
@@ -40,18 +73,14 @@ def terrain_ruggedness(X):
     return X
 
 #%%    
-def esri_planar_slope(X):
+def esri_planar_slope(X,cellsize=1,degrees=True):
     '''
-    The maximum areal slope of a 3x3 neighborhood.
+    The maximum areal slope of a 3x3 neighborhood.  No sizes other than 3x3
+    should be supplied; unpredictable behavior will result.
     
     This function uses the planar formula to calculate a percent slope of the 
     given surface, assuming that horizonal and vertical units are the same.
-    
-    If cellsize is not 1, you must divide the result by the cellsize for the 
-    correct slope value.
-    
-    If degrees are required, transform the resulting surface using 
-    np.rad2deg(np.arctan(S))
+
     
 
     References
@@ -68,36 +97,25 @@ def esri_planar_slope(X):
     
     >>> import rasterio
     >>> import scipy.ndimage as ndi
+    >>> from neilpy.filters import esri_planar_slope
     
     >>> with rasterio.open('../sample_data/sample_dem.tif') as src:
         Z = src.read(1)
         Zt = src.affine
         cellsize = Zt[0]
     
-    >>> S = ndi.filters.generic_filter(Z,neilpy.filters.esri_planar_slope,size=3)
-    >>> S = S / cellsize
+    >>> S = ndi.filters.generic_filter(Z,esri_planar_slope,size=3,mode='nearest',extra_keywords={'cellsize':cellsize,'degrees':True})
     
-    >>> S_deg = np.rad2deg(np.arctan(S))
-    
-    Example 2
-    
-    >>> Z = np.array([[50,45,50],[30,30,30],[8,10,10]])
-    >>> cellsize = 5
-    >>> S = neilpy.filters.esri_planar_slope(Z) / cellsize
-    >>> print(S)
-    3.800328933131973
-    >>> S_deg = np.rad2deg(np.arctan(S))
-    >>> print(S_deg)
-    75.25765769167738
-    
- 
-    
+   
     '''
     
     X = X.reshape((3,3)) 
     dz_dx = (np.sum(X[:,-1] * (1,2,1)) - np.sum(X[:,0] * (1,2,1))) / 8
     dz_dy = (np.sum(X[-1,:] * (1,2,1)) - np.sum(X[0,:] * (1,2,1))) / 8
-    return np.sqrt(dz_dx**2 + dz_dy**2)
+    S = np.sqrt(dz_dx**2 + dz_dy**2) / cellsize
+    if degrees:
+        S = np.rad2deg(np.arctan(S))
+    return S
 
 
 #%%
