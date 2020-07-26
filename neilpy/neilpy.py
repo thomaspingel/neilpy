@@ -42,6 +42,7 @@ from PIL import Image
 from skimage.util import apply_parallel
 from skimage.morphology import disk
 import cv2
+import imageio
 
 from pyproj import Transformer
 
@@ -1123,6 +1124,9 @@ def progressive_filter(Z,windows,cellsize=1,slope_threshold=.15):
     is_object_cell = np.zeros(np.shape(Z),dtype=np.bool)
     for i,window in enumerate(windows):
         elevation_threshold = elevation_thresholds[i]
+        this_disk = disk(window)
+        if window==1:
+            this_disk = np.ones((3,3),dtype=np.uint8)
         this_surface = ndi.morphology.grey_opening(last_surface,footprint=disk(window)) 
         is_object_cell = (is_object_cell) | (last_surface - this_surface > elevation_threshold)
         if i < len(windows) and len(windows)>1:
@@ -1131,7 +1135,13 @@ def progressive_filter(Z,windows,cellsize=1,slope_threshold=.15):
 
 
 #%%
-def smrf(x,y,z,cellsize=1,windows=18,slope_threshold=.15,elevation_threshold=.5,elevation_scaler=1.25):
+
+'''
+x,y,z are points in space (e.g., lidar points)
+windows is a scalar value specifying the maximum radius in pixels
+'''
+
+def smrf(x,y,z,cellsize=1,windows=18,slope_threshold=.15,elevation_threshold=.5,elevation_scaler=1.25,low_outlier_fill=False):
 
     if np.isscalar(windows):
         windows = np.arange(windows) + 1
@@ -1140,6 +1150,13 @@ def smrf(x,y,z,cellsize=1,windows=18,slope_threshold=.15,elevation_threshold=.5,
     is_empty_cell = np.isnan(Zmin)
     Zmin = inpaint_nans_by_springs(Zmin)
     low_outliers = progressive_filter(-Zmin,np.array([1]),cellsize,slope_threshold=5); 
+    
+    # perhaps best to remove and interpolate those low values before proceeding?
+    if low_outlier_fill:
+        Zmin[low_outliers] = np.nan
+        Zmin = inpaint_nans_by_springs(Zmin)
+    
+    # This is the main crux of the algorithm
     object_cells = progressive_filter(Zmin,windows,cellsize,slope_threshold);
     
     # Create a provisional surface

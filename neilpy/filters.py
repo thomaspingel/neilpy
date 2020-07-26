@@ -5,25 +5,8 @@ Created on Tue Jan  9 13:09:52 2018
 @author: Thomas Pingel
 """
 
-import numpy as np
 
-
-
-#%%
-
-
-def test(X,smooth=False):
-        if X.ndim > 1:
-        X = X.ravel()
-    n = np.size(X)
-    if np%2 is not 1:
-        print(n)
-    center = np.floor(n / 2).astype(np.int)
-    
-    
-#%%
-
-def topographic_position_index(X):
+def topographic_position_index_filter(X):
 
     if X.ndim > 1:
         X = X.ravel()
