@@ -1141,7 +1141,7 @@ x,y,z are points in space (e.g., lidar points)
 windows is a scalar value specifying the maximum radius in pixels
 '''
 
-def smrf(x,y,z,cellsize=1,windows=18,slope_threshold=.15,elevation_threshold=.5,elevation_scaler=1.25,low_outlier_fill=False):
+def smrf(x,y,z,cellsize=1,windows=18,slope_threshold=.15,elevation_threshold=.5,elevation_scaler=1.25,low_filter_slope=5,low_outlier_fill=False):
 
     if np.isscalar(windows):
         windows = np.arange(windows) + 1
@@ -1149,7 +1149,7 @@ def smrf(x,y,z,cellsize=1,windows=18,slope_threshold=.15,elevation_threshold=.5,
     Zmin,t = create_dem(x,y,z,cellsize=cellsize,bin_type='min');
     is_empty_cell = np.isnan(Zmin)
     Zmin = inpaint_nans_by_springs(Zmin)
-    low_outliers = progressive_filter(-Zmin,np.array([1]),cellsize,slope_threshold=5); 
+    low_outliers = progressive_filter(-Zmin,np.array([1]),cellsize,slope_threshold=low_filter_slope); 
     
     # perhaps best to remove and interpolate those low values before proceeding?
     if low_outlier_fill:
