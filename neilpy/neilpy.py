@@ -1138,7 +1138,25 @@ def progressive_filter(Z,windows,cellsize=1,slope_threshold=.15):
 
 '''
 x,y,z are points in space (e.g., lidar points)
-windows is a scalar value specifying the maximum radius in pixels
+
+windows is a scalar value specifying the maximum radius in pixels.  One can also 
+supply an array of specific radii to test.  Very often, increasing the radius by 
+one each time (as is the default) is unnecessary, especially for EDA.
+
+Final classification of points is done using elevation_threshold and elevation_scaler.
+points are compared against the provisional surface with a threshold modulated by the 
+scaler value.  However, often the provisional surface (itself interpolated) works
+quite well.  
+
+Two additional parameters are being test to assist in low outlier removal.
+low_filter_slope provides a slope value for an inverted surface.  Its default
+value is 5 (meaning 500% slope).  However, we have noticed that in very rugged 
+and forested terrain, that an even larger value may be necessary.  Alternatively,
+low noise can be scrubbed using other means, and then this value can be set to a very high 
+value to avoid its use entirely.  A second parameter (low_outlier_fill) will 
+remove the points from the provisional DTM, and then fill them in before the main
+body of the SMRF algorithm proceeds.  This should aid in preventing the "damage"
+to the DTM that can happen when low outliers are present.
 '''
 
 def smrf(x,y,z,cellsize=1,windows=18,slope_threshold=.15,elevation_threshold=.5,elevation_scaler=1.25,low_filter_slope=5,low_outlier_fill=False):
