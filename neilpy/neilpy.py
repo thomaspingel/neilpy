@@ -631,8 +631,7 @@ def read_las(filename):
     def get_bit(byteval,idx):
         return ((byteval&(1<<idx))!=0);
 
-    # Recast the return_byte to get return number (3 bits), the maximum return (3
-    # bits), and the scan direction and edge of flight line flags (1 bit each)
+    # Recast the mixed bytes as specified in the LAS specification
     if header['point_data_format_id'] < 6:
         data['return_number'] = 4 * get_bit(data['return_byte'],2).astype(np.uint8) + 2 * get_bit(data['return_byte'],1).astype(np.uint8) + get_bit(data['return_byte'],0).astype(np.uint8)
         data['return_max'] = 4 * get_bit(data['return_byte'],5).astype(np.uint8) + 2 * get_bit(data['return_byte'],4).astype(np.uint8) + get_bit(data['return_byte'],3).astype(np.uint8)
@@ -645,7 +644,6 @@ def read_las(filename):
         # data['scan_direction'] = get_bit(data['return_byte'],6)
         # data['edge_of_flight_line'] = get_bit(data['return_byte'],7)
         del data['return_byte']        
-    
     if header['point_data_format_id'] >= 6:
         data['classification_bit_synthetic'] = get_bit(data['mixed_byte'],0)
         data['classification_bit_keypoint'] = get_bit(data['mixed_byte'],1)
@@ -657,7 +655,6 @@ def read_las(filename):
         del data['mixed_byte']
     
 
-    # TODO: Need to add formats 7-10
     
     return header,data
 
