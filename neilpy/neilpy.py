@@ -499,7 +499,7 @@ def read_las(filename):
     
     # This dictionary holds the byte length of the point data (see minimum
     # PDRF Size given in LAS spec.)
-    point_data_format_key = {0:20,1:28,2:26,3:34,4:57,5:63,6:30}
+    point_data_format_key = {0:20,1:28,2:26,3:34,4:57,5:63,6:30,7:36,8:38,9:59,10:67}
     
     # Read header into a dictionary
     header = {}
@@ -531,7 +531,12 @@ def read_las(filename):
         header['point_data_format_id'] = point_data_format_id - 128
     if laz_format:
         raise ValueError('LAZ not yet supported.')
-    format_length = point_data_format_key[header['point_data_format_id']]
+    try:
+        format_length = point_data_format_key[header['point_data_format_id']]
+    except:
+        raise ValueError('Point Data Record Format',header['point_data_format_id'],'not yet supported.')
+    if header['point_data_format_id'] >= 6:
+        print('Point Data Formats 6-10 have recently been added to this reader.  Please check results carefully and report any suspected errors.')
     header['point_data_record_length'] = struct.unpack('<H',data[105:107])[0]
     header['num_point_records'] = struct.unpack('<L',data[107:111])[0]
     header['num_points_by_return'] = struct.unpack('<5L',data[111:131])
@@ -587,6 +592,34 @@ def read_las(filename):
                        ('return_byte','u1'),('mixed_byte','u1'),('class','u1'),
                        ('user_data','u1'),('scan_angle','u2'),('point_source_id','u2'),
                        ('gpstime','f8')])
+    elif header['point_data_format_id']==7:
+        dt = np.dtype([('x', 'i4'), ('y', 'i4'), ('z', 'i4'), ('intensity', 'u2'),
+                       ('return_byte','u1'),('mixed_byte','u1'),('class','u1'),
+                       ('user_data','u1'),('scan_angle','u2'),('point_source_id','u2'),
+                       ('gpstime','f8'),('red','u2'),('green','u2'),('blue','u2')])        
+    elif header['point_data_format_id']==8:
+        dt = np.dtype([('x', 'i4'), ('y', 'i4'), ('z', 'i4'), ('intensity', 'u2'),
+                       ('return_byte','u1'),('mixed_byte','u1'),('class','u1'),
+                       ('user_data','u1'),('scan_angle','u2'),('point_source_id','u2'),
+                       ('gpstime','f8'),('red','u2'),('green','u2'),('blue','u2'),
+                       ('near_infrared','u2')])    
+    elif header['point_data_format_id']==9:
+        dt = np.dtype([('x', 'i4'), ('y', 'i4'), ('z', 'i4'), ('intensity', 'u2'),
+                       ('return_byte','u1'),('mixed_byte','u1'),('class','u1'),
+                       ('user_data','u1'),('scan_angle','u2'),('point_source_id','u2'),
+                       ('gpstime','f8'),('wave_packet_descriptor_index','u1'),
+                       ('byte_offset','u8'),('wave_packet_size','u4'),
+                       ('return_point_waveform_location','f4'),
+                       ('xt','f4'),('yt','f4'),('zt','f4')])
+    elif header['point_data_format_id']==10:
+        dt = np.dtype([('x', 'i4'), ('y', 'i4'), ('z', 'i4'), ('intensity', 'u2'),
+                       ('return_byte','u1'),('mixed_byte','u1'),('class','u1'),
+                       ('user_data','u1'),('scan_angle','u2'),('point_source_id','u2'),
+                       ('gpstime','f8'),('red','u2'),('green','u2'),('blue','u2'),
+                       ('near_infrared','u2'),('wave_packet_descriptor_index','u1'),
+                       ('byte_offset','u8'),('wave_packet_size','u4'),
+                       ('return_point_waveform_location','f4'),
+                       ('xt','f4'),('yt','f4'),('zt','f4')])         
         
         
     # Transform to Pandas dataframe, via a numpy array
@@ -600,16 +633,31 @@ def read_las(filename):
 
     # Recast the return_byte to get return number (3 bits), the maximum return (3
     # bits), and the scan direction and edge of flight line flags (1 bit each)
-    data['return_number'] = 4 * get_bit(data['return_byte'],2).astype(np.uint8) + 2 * get_bit(data['return_byte'],1).astype(np.uint8) + get_bit(data['return_byte'],0).astype(np.uint8)
-    data['return_max'] = 4 * get_bit(data['return_byte'],5).astype(np.uint8) + 2 * get_bit(data['return_byte'],4).astype(np.uint8) + get_bit(data['return_byte'],3).astype(np.uint8)
-    data['scan_direction'] = get_bit(data['return_byte'],6)
-    data['edge_of_flight_line'] = get_bit(data['return_byte'],7)
-    del data['return_byte']
+    if header['point_data_format_id'] < 6:
+        data['return_number'] = 4 * get_bit(data['return_byte'],2).astype(np.uint8) + 2 * get_bit(data['return_byte'],1).astype(np.uint8) + get_bit(data['return_byte'],0).astype(np.uint8)
+        data['return_max'] = 4 * get_bit(data['return_byte'],5).astype(np.uint8) + 2 * get_bit(data['return_byte'],4).astype(np.uint8) + get_bit(data['return_byte'],3).astype(np.uint8)
+        data['scan_direction'] = get_bit(data['return_byte'],6)
+        data['edge_of_flight_line'] = get_bit(data['return_byte'],7)
+        del data['return_byte']
+    else:
+        data['return_number'] = 8 * get_bit(data['return_byte'],3).astype(np.uint8) + 4 * get_bit(data['return_byte'],2).astype(np.uint8) + 2 * get_bit(data['return_byte'],1).astype(np.uint8) + get_bit(data['return_byte'],0).astype(np.uint8)
+        data['return_max'] = 8 * get_bit(data['return_byte'],7).astype(np.uint8) + 4 * get_bit(data['return_byte'],6).astype(np.uint8) + 2 * get_bit(data['return_byte'],5).astype(np.uint8) + get_bit(data['return_byte'],4).astype(np.uint8)
+        # data['scan_direction'] = get_bit(data['return_byte'],6)
+        # data['edge_of_flight_line'] = get_bit(data['return_byte'],7)
+        del data['return_byte']        
     
-    # TODO; need to do the same as above for the "mixed byte" that contains
-    # classification flags (4 bits), scanner channel (2 bits), scan direction
-    # flag (1 bit), and edge of flight line (1 bit)
-    # Also need to add formats 7-10
+    if header['point_data_format_id'] >= 6:
+        data['classification_bit_synthetic'] = get_bit(data['mixed_byte'],0)
+        data['classification_bit_keypoint'] = get_bit(data['mixed_byte'],1)
+        data['classification_bit_withheld'] = get_bit(data['mixed_byte'],2)
+        data['classification_bit_overlap'] = get_bit(data['mixed_byte'],3)
+        data['scanner_channel'] = 2 * get_bit(data['mixed_byte'],5).astype(np.uint8) + 1 * get_bit(data['mixed_byte'],4).astype(np.uint8)
+        data['scan_direction'] = get_bit(data['mixed_byte'],6)
+        data['edge_of_flight_line'] = get_bit(data['mixed_byte'],7)
+        del data['mixed_byte']
+    
+
+    # TODO: Need to add formats 7-10
     
     return header,data
 
