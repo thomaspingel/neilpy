@@ -63,7 +63,6 @@ wgs84 = 4326
 
 WGS84 UTM is 326xx or 327xx (e.g., zone 17 is 32617; lookup with epsg.io)
 '''
-
 def coord_transform(x,y,from_epsg,to_epsg):
     transformer = Transformer.from_crs(from_epsg,to_epsg,always_xy=True)
     return transformer.transform(x,y)
@@ -487,6 +486,7 @@ References:
 http://stackoverflow.com/questions/16573089/reading-binary-data-into-pandas
 https://docs.scipy.org/doc/numpy/reference/arrays.dtypes.html
 LAZ http://howardbutler.com/javascript-laz-implementation.html
+http://www.asprs.org/wp-content/uploads/2019/07/LAS_1_4_r15.pdf
 """
 
 # Reads a file into pandas dataframe
@@ -497,7 +497,9 @@ def read_las(filename):
     with open(filename,mode='rb') as file:
         data = file.read()
     
-    point_data_format_key = {0:20,1:28,2:26,3:34,4:57,5:63}
+    # This dictionary holds the byte length of the point data (see minimum
+    # PDRF Size given in LAS spec.)
+    point_data_format_key = {0:20,1:28,2:26,3:34,4:57,5:63,6:30}
     
     # Read header into a dictionary
     header = {}
@@ -580,7 +582,13 @@ def read_las(filename):
                        ('wave_packet_descriptor_index','u1'),('byte_offset','u8'),
                        ('wave_packet_size','u4'),('return_point_waveform_location','f4'),
                        ('xt','f4'),('yt','f4'),('zt','f4')])
-
+    elif header['point_data_format_id']==6:
+        dt = np.dtype([('x', 'i4'), ('y', 'i4'), ('z', 'i4'), ('intensity', 'u2'),
+                       ('return_byte','u1'),('mixed_byte','u1'),('class','u1'),
+                       ('user_data','u1'),('scan_angle','u2'),('point_source_id','u2'),
+                       ('gpstime','f8')])
+        
+        
     # Transform to Pandas dataframe, via a numpy array
     data = pd.DataFrame(np.frombuffer(data,dt))
     data['x'] = data['x']*header['scale'][0] + header['offset'][0]
@@ -597,6 +605,11 @@ def read_las(filename):
     data['scan_direction'] = get_bit(data['return_byte'],6)
     data['edge_of_flight_line'] = get_bit(data['return_byte'],7)
     del data['return_byte']
+    
+    # TODO; need to do the same as above for the "mixed byte" that contains
+    # classification flags (4 bits), scanner channel (2 bits), scan direction
+    # flag (1 bit), and edge of flight line (1 bit)
+    # Also need to add formats 7-10
     
     return header,data
 
@@ -1159,7 +1172,8 @@ body of the SMRF algorithm proceeds.  This should aid in preventing the "damage"
 to the DTM that can happen when low outliers are present.
 '''
 
-def smrf(x,y,z,cellsize=1,windows=18,slope_threshold=.15,elevation_threshold=.5,elevation_scaler=1.25,low_filter_slope=5,low_outlier_fill=False):
+def smrf(x,y,z,cellsize=1,windows=18,slope_threshold=.15,elevation_threshold=.5,
+         elevation_scaler=1.25,low_filter_slope=5,low_outlier_fill=False):
 
     if np.isscalar(windows):
         windows = np.arange(windows) + 1
