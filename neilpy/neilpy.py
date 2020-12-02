@@ -44,7 +44,12 @@ from skimage.morphology import disk
 import cv2
 import imageio
 
+import geopandas
+import datetime
+
 from pyproj import Transformer
+
+import piexif
 
 # Global variable to help load data files (PNG-based color tables, etc.)
 neilpy_dir = os.path.dirname(inspect.stack()[0][1])
@@ -289,7 +294,14 @@ def aspect(Z,return_as='degrees',flat_as='nan'):
 def curvature(X,cellsize=1):
     return -100*ndi.filters.laplace(X/cellsize)
 
-#%%        
+#%%     
+# Jim and Tom think that the numerators for these functions are the same as
+# Wilson and Gallant's equations 3.15, 3.16, and 3.18, but with different
+# denominators    
+# 
+# But the main derivation comes from Zevenbergen and Thorne (1987) page 47
+
+# https://desktop.arcgis.com/en/arcmap/10.3/tools/spatial-analyst-toolbox/how-curvature-works.htm
 
 def esri_curvature(X,cellsize=1):
 
@@ -316,9 +328,10 @@ def esri_curvature(X,cellsize=1):
     Z8[np.isnan(Z8)] = X[np.isnan(Z8)]
     Z9[np.isnan(Z9)] = X[np.isnan(Z9)]
 
-    A = ((Z1 + Z3 + Z7 + Z9)/4 - (Z2 + Z4 + Z6 + Z8)/2 + X)/(L**4);
-    B = ((Z1 + Z3 - Z7 + Z9)/4 - (Z2 - Z8)/2)/(L**3);
-    C = ((-Z1 + Z3 - Z7 + Z9)/4 + (Z4 - Z6)/2) / (L**3);
+    # We don't use these?  They are given in Zevenburgen and Thorne (1987)
+    #A = ((Z1 + Z3 + Z7 + Z9)/4 - (Z2 + Z4 + Z6 + Z8)/2 + X)/(L**4);
+    #B = ((Z1 + Z3 - Z7 + Z9)/4 - (Z2 - Z8)/2)/(L**3);
+    #C = ((-Z1 + Z3 - Z7 + Z9)/4 + (Z4 - Z6)/2) / (L**3);
     D = (((Z4 + Z6) / 2) - X) / (L**2);
     E = (((Z2 + Z8) / 2) - X) / (L**2);
     F = (-Z1 + Z3 + Z7 - Z9) / (4*(L**2));
@@ -366,15 +379,29 @@ def evans_curvature(X,cellsize=1):
     z7 = ashift(X,6)
     z8 = ashift(X,5)
     z9 = ashift(X,4)
+    
+    # As with ESRI, we're going to fill any missing values with the value
+    # of the center pixel.  A better move might be to have a warning for this
+    # and prompt the user that this is happening, or that they should use
+    # an interpolator to fill the holes more intentionally before proceeding
+    # z1[np.isnan(z1)] = X[np.isnan(z1)]
+    # z2[np.isnan(z2)] = X[np.isnan(z2)]
+    # z3[np.isnan(z3)] = X[np.isnan(z3)]
+    # z4[np.isnan(z4)] = X[np.isnan(z4)]
+    # z6[np.isnan(z6)] = X[np.isnan(z6)]
+    # z7[np.isnan(z7)] = X[np.isnan(z7)]
+    # z8[np.isnan(z8)] = X[np.isnan(z8)]
+    # z9[np.isnan(z9)] = X[np.isnan(z9)]    
+    
 
     # From Wood (1991), pages 91 and 92
-    A = (z1 + z3 + z4 + z6 + z7 + z9)/(6*L**2) - (z2+X+z8)/(3*L**2)
-    B = (z1  + z2 + z3 + z7 + z8 + z9)/(6*L**2) - (z4+X+z6)/(3*L**2)
-    C = (z3 + z7 - z1 -z9) / (4*L**2)
-    D = (z3+z6+z9-z1-z4-z7) / (6*L)
-    E = (z1+z2+z3-z7-z8-z9)/(6*L)
+    A = (z1 + z3 + z4 + z6 + z7 + z9)/(6*L**2) - (z2+X+z8)/(3*L**2)    # Fxx
+    B = (z1  + z2 + z3 + z7 + z8 + z9)/(6*L**2) - (z4+X+z6)/(3*L**2)   # Fyy
+    C = (z3 + z7 - z1 -z9) / (4*L**2)                                  # Fxy
+    D = (z3+z6+z9-z1-z4-z7) / (6*L)                                    # Fx
+    E = (z1+z2+z3-z7-z8-z9)/(6*L)                                      # Fy
     F = (2*(z2+z4+z6+z8)-(z1+z3+z7+z9)+5*X) / 9
-
+    
     del z1,z2,z3,z4,z6,z7,z8,z9
 
     # From Wood, page 85-87; lon
@@ -387,6 +414,10 @@ def evans_curvature(X,cellsize=1):
     # Calculate tangential curvature based on Krcho (1991) equation as seen in Schmidt et al (2003)
     tan_curvature = cross_curvature / ((D**2 + E**2 + 1)**.5)
     
+    # Shi versions, this probably isn't right.
+    shi_profile = (A*D**2 + 2*C*D*E + B*E**2) / (D**2+E**2)*((1+D**2+E**2)**1.5)
+    shi_tan = (A*E**2 - 2*C*D*E + B*D**2) / (D**2+E**2)*((1+D**2+E**2)**.5)
+    
     np.seterr(divide='warn', invalid='warn')
     
     # Fix nans
@@ -398,7 +429,7 @@ def evans_curvature(X,cellsize=1):
     
     
 
-    return cross_curvature, plan_curvature, profile_curvature, long_curvature, tan_curvature   
+    return cross_curvature, plan_curvature, profile_curvature, long_curvature, tan_curvature, shi_profile, shi_tan  
     
 #%%
 # http://edndoc.esri.com/arcobjects/9.2/net/shared/geoprocessing/spatial_analyst_tools/how_hillshade_works.htm
@@ -934,6 +965,8 @@ def skyview_factor(Z,cellsize=1,lookup_pixels=1):
 # been recorded, and then converted to decimal; here they are converted
 # to decimal as it progresses.  Upper left pixel is the least significant
 # digit, left pixel is the most significant pixel.
+
+# For a binary equivalent, see https://scikit-image.org/docs/dev/auto_examples/features_detection/plot_local_binary_pattern.html
     
 def ternary_pattern_from_openness(Z,cellsize=1,lookup_pixels=1,threshold_angle=0,use_negative_openness=True,lowest=False):
     pows = 3**np.arange(8)
@@ -1538,3 +1571,138 @@ def topographic_position_index(X,radius=1,standardize=True):
         result = result / sd
     
     return result
+
+#%%
+
+# Reader for LLH data returned by Emlid Reach and RTKlib
+# Takes a filename, returns a geodataframe
+# https://community.emlid.com/t/reach-llh-protocol-format/1354/4
+
+def read_llh(fn,return_datetimes=True,skiprows=0):
+    
+    df = pd.read_csv(fn,header=None,delim_whitespace=True,skiprows=skiprows)
+    
+    df = df.rename({0:'date_gps',1:'time_gps',2:'lat',3:'lon',4:'alt',5:'Q',
+                    6:'num_sat',7:'sdn',8:'sde',9:'sdu',10:'sdne',11:'sdeu',
+                    12:'sdun',13:'age',14:'ratio'},axis=1)
+    
+    # Q=1:fix,2:float,3:sbas,4:dgps,5:single,6:ppp
+    
+    if return_datetimes:
+        tm = df.iloc[:,0] + " " + df.iloc[:,1]
+        df['datetime_gps'] = pd.to_datetime(tm)
+        df['datetime_utc'] = df['datetime_gps'] - datetime.timedelta(seconds=18)
+    
+    df = geopandas.GeoDataFrame(df, geometry=geopandas.points_from_xy(df.lon, df.lat))
+    df = df.set_crs(epsg=4326)
+    
+    return df
+
+
+
+#%%
+def read_pos(fn,return_datetimes=True):
+    df = read_llh(fn,return_datetimes,skiprows=11)
+    return df
+
+#%%
+
+
+def exif_dict_to_dd(exif_dict):
+    lat = exif_dict['GPS'][2][0][0] + exif_dict['GPS'][2][1][0]/60 + exif_dict['GPS'][2][2][0]/(exif_dict['GPS'][2][2][1]*3600)
+    if exif_dict['GPS'][1] == b'S':
+        lat = -lat
+    lon = exif_dict['GPS'][4][0][0] + exif_dict['GPS'][4][1][0]/60 + exif_dict['GPS'][4][2][0]/(exif_dict['GPS'][4][2][1]*3600)
+    if exif_dict['GPS'][3] == b'W':
+        lon = -lon
+    alt = exif_dict['GPS'][6][0] / exif_dict['GPS'][6][1]
+    gpstime = str(exif_dict['GPS'][7][0][0]) + ':' + str(exif_dict['GPS'][7][1][0]).zfill(2) + ':' + str(exif_dict['GPS'][7][2][0]).zfill(2)
+    gpsdate = exif_dict['GPS'][29].decode("utf-8") 
+    clockdatetime = exif_dict['Exif'][36867].decode('utf-8')
+        
+    return lon,lat,alt,gpstime,gpsdate,clockdatetime
+
+
+# Decimal Degree to EXIF tuple
+# You still need to add manually add correction for NS / EW in EXIF
+def dd_to_exif_tuple(dd):
+    dd = np.abs(dd)
+    d = int(np.floor(dd))
+    m = int(np.floor(60 * (dd - d)))
+    s = (dd - d - m/60) * 3600
+    ss = int(np.floor(10000 * s))
+
+    tup = ((d,1),(m,1),(ss,10000))
+    return tup
+
+
+def read_geotags_into_df(fns,return_datetimes=True):
+    df = pd.DataFrame()
+    for fn in fns:
+        # Open the image, and read its exif information
+        with Image.open(fn) as im:
+            exif_dict = piexif.load(im.info["exif"])
+            lon,lat,alt,gpstime,gpsdate,clockdatetime = exif_dict_to_dd(exif_dict)
+            gpsdate = str(gpsdate).replace(':','-')
+            gpsdatetime = gpsdate + ' ' + gpstime
+            
+            #print(gpsdatetime)
+            df = df.append([[fn,lat,lon,alt,gpsdatetime,clockdatetime]],ignore_index=True)
+    df = df.rename({0:'fn',1:'lat',2:'lon',3:'alt',4:'datetime_gps',5:'datetime_clock'},axis=1)   
+    if return_datetimes:
+        df['datetime_gps'] = pd.to_datetime(df['datetime_gps'])
+
+        # TODO
+        # Need to convert datetime clock to datetime here.        
+        
+    return df
+
+
+#%%
+def stringify_time(series,how='time'):
+    if how=='datetime':
+        return series.dt.strftime('%Y:%m:%d %H:%M:%S.%f').str[:-5]
+    else:
+        return series.dt.strftime('%H:%M:%S.%f').str[:-5]  
+
+#%%
+
+def fix_gopro_bad_time_resolution(series):
+    df = pd.DataFrame(series)
+    df = df.rename({df.columns.values[0]:'key'},axis=1)
+    df['count'] = 0
+    group = df.groupby('key') 
+    datetime_counts = pd.DataFrame(group.count()).iloc[:,0].reset_index() 
+    df.drop('count',axis=1,inplace=True)
+    #datetime_counts['count'] = datetime_counts.iloc[:,-1]
+    #datetime_counts.drop(1,axis=1,inplace=True)    
+    #datetime_counts = df.rename(columns={ df.columns[0]: "count" })
+    # datetime_counts = datetime_counts.rename({'datetime_gps':'count'},axis=1)
+    df = df.merge(datetime_counts,how='left',on='key')
+    
+    df['increment'] = 1  
+    df['add_to'] = 0
+    
+    last_time = -1
+    increment = 1
+    for i in range(len(df)):
+        this_time = df.loc[i,'key']
+        if this_time != last_time:
+            increment = 1
+        else:
+            increment = increment + 1
+        df.loc[i,'increment'] = increment      
+        last_time = this_time
+    
+    idx = (df['count']>=2) & (df['increment']==2)
+    df.loc[idx,'add_to'] = .5
+    idx = (df['count']==1) & (df['increment']==1)
+    df.loc[idx,'add_to'] = .5
+    idx = (df['count']==3) & (df['increment']==3)
+    df.loc[idx,'add_to'] = 1
+        
+    value = df['key'] + pd.to_timedelta(df['add_to'], unit='seconds')
+    
+    return value
+
+
