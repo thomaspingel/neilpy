@@ -3,7 +3,7 @@ from distutils.core import setup
 
 setup(
     name='NeilPy',
-    version='0.16',
+    version='0.17',
     packages=['neilpy',],
     license='MIT',
     long_description=open('README.md').read(),
@@ -18,6 +18,7 @@ setup(
                  'Programming Language :: Python :: 3.5',
                  'Programming Language :: Python :: 3.6',
                  'Programming Language :: Python :: 3.7',
+                 'Programming Language :: Python :: 3.8',
                  'Topic :: Scientific/Engineering',
                  'Topic :: Scientific/Engineering :: Geographic Information Science',
                  'Intended Audience :: Science/Research',

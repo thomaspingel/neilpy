@@ -154,10 +154,15 @@ def gi_formula(x,n,m,v):
 Calculated Getis-Ord Gi Statistic of local autocorrelation on a raster.
 For vector-based operations, see the package PySAL.
 
-The user can supply either a bineary footprint (structuring element) or
-can supply a scaler value to indicate a size of structuring element.  In
+The user can supply either a binary footprint (structuring element) or
+can supply a scalar value to indicate a size of structuring element.  In
 this case, a square structuring element with zero at its center is used.
 Users should supply odd-dimension neighborhoods (3x3, 5x5, etc).
+
+The "mode" argument gets passed directly to ndimage's generic_filter, and is 
+used to handle how edge cases work.  Nearest is almost always what you want, 
+but "mirror" and "wrap" are interesting and could be used in very special 
+circumstances.
 
 References
 ----------
@@ -170,10 +175,17 @@ def rasterGi(X,footprint,mode='nearest',apply_correction=False):
     # Cast to a float; these operations won't all work on integers
     X = X.astype(np.float)
 
-    # If a footprint was provided as a size, make a square structuring element 
-    # with a zero at the center.
+    # If a footprint was provided as a size, assume this is a radius (a change
+    # starting in neilpy v.0.17, prior to which is was used directly as the 
+    # size) and make a square structuring element     # with a zero at the 
+    # center.
     if np.isscalar(footprint):
-        m = np.floor(footprint/2).astype(np.int)
+        # This becomes the center pixel
+        m = footprint
+        # assume the footprint is a radius, so make a diameter
+        footprint = 2 * footprint + 1
+        # This is the old line; leaving in for failure checking
+        # m = np.floor(footprint/2).astype(np.int)
         footprint = np.ones((footprint,footprint),dtype=np.int)
         footprint[m,m] = 0
         
@@ -317,7 +329,7 @@ def esri_curvature(X,cellsize=1):
     Z8 = ashift(X,5)
     Z9 = ashift(X,4)
 
-    # In cases where data are missing, ESRI seems to (?) just fill
+    # In cases where data are missing, ESRI seems to just fill
     # in the original center pixel instead:
     Z1[np.isnan(Z1)] = X[np.isnan(Z1)]
     Z2[np.isnan(Z2)] = X[np.isnan(Z2)]
@@ -328,10 +340,10 @@ def esri_curvature(X,cellsize=1):
     Z8[np.isnan(Z8)] = X[np.isnan(Z8)]
     Z9[np.isnan(Z9)] = X[np.isnan(Z9)]
 
-    # We don't use these?  They are given in Zevenburgen and Thorne (1987)
-    #A = ((Z1 + Z3 + Z7 + Z9)/4 - (Z2 + Z4 + Z6 + Z8)/2 + X)/(L**4);
-    #B = ((Z1 + Z3 - Z7 + Z9)/4 - (Z2 - Z8)/2)/(L**3);
-    #C = ((-Z1 + Z3 - Z7 + Z9)/4 + (Z4 - Z6)/2) / (L**3);
+    # Parameters given in Zevenburgen and Thorne (1987)
+    A = ((Z1 + Z3 + Z7 + Z9)/4 - (Z2 + Z4 + Z6 + Z8)/2 + X)/(L**4);
+    B = ((Z1 + Z3 - Z7 + Z9)/4 - (Z2 - Z8)/2)/(L**3);
+    C = ((-Z1 + Z3 - Z7 + Z9)/4 + (Z4 - Z6)/2) / (L**3);
     D = (((Z4 + Z6) / 2) - X) / (L**2);
     E = (((Z2 + Z8) / 2) - X) / (L**2);
     F = (-Z1 + Z3 + Z7 - Z9) / (4*(L**2));
@@ -343,11 +355,11 @@ def esri_curvature(X,cellsize=1):
     curvature = -200 * (D + E)
 
     np.seterr(divide='ignore', invalid='ignore')
-    P1 = D*(H**2);
-    P2 = E*(G**2);
-    P3 = F*G*H;
-    P4 = (G**2) + (H**2);
-    planc = -200 * ((P1 + P2 - P3) / P4);
+    P1 = D*(H**2)
+    P2 = E*(G**2)
+    P3 = F*G*H
+    P4 = (G**2) + (H**2)
+    planc = -200 * ((P1 + P2 - P3) / P4)
     planc[np.isnan(planc)] = 0;
 
     P1 = D*(G**2);
@@ -1706,3 +1718,11 @@ def fix_gopro_bad_time_resolution(series):
     return value
 
 
+#%%
+# https://pythonhealthcare.org/2018/04/15/64-numpy-setting-width-and-number-of-decimal-places-in-numpy-print-output/
+
+def set_print_options(places=2,width=0):
+    set_np = '{0:' + str(width) + '.' + str(places) + 'f}'
+    np.set_printoptions(formatter={'float': lambda x: set_np.format(x)})
+    pd.options.display.float_format = set_np.format
+    
