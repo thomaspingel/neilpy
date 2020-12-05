@@ -155,9 +155,10 @@ Calculated Getis-Ord Gi Statistic of local autocorrelation on a raster.
 For vector-based operations, see the package PySAL.
 
 The user can supply either a binary footprint (structuring element) or
-can supply a scalar value to indicate a size of structuring element.  In
-this case, a square structuring element with zero at its center is used.
-Users should supply odd-dimension neighborhoods (3x3, 5x5, etc).
+can supply a scalar value to indicate a size of structuring element.  The
+scalar is assumed to be a radius (i.e., if 1 if provided, the structuring
+                                  element will be 3x3 (2x1+1), if 2 is 
+                                  provided, then 5 (2x2+1), etc.)
 
 The "mode" argument gets passed directly to ndimage's generic_filter, and is 
 used to handle how edge cases work.  Nearest is almost always what you want, 
