@@ -308,15 +308,17 @@ def curvature(X,cellsize=1):
     return -100*ndi.filters.laplace(X/cellsize)
 
 #%%     
-# Jim and Tom think that the numerators for these functions are the same as
-# Wilson and Gallant's equations 3.15, 3.16, and 3.18, but with different
-# denominators    
-# 
-# But the main derivation comes from Zevenbergen and Thorne (1987) page 47
 
+# The derivation comes from Zevenbergen and Thorne (1987) page 47, but is used in ESRI products
+#
+# Profile curvature here is the same as SAGA's Longitudinal curvature (scaling and directional issues aside)
+# Plan curvature here is the same as SAGA's Cross Sectional curvature (scaling and directional issues aside)
+
+# https://dx.doi.org/10.1002/esp.3290120107
 # https://desktop.arcgis.com/en/arcmap/10.3/tools/spatial-analyst-toolbox/how-curvature-works.htm
+# https://support.esri.com/en/technical-article/000005086
 
-def esri_curvature(X,cellsize=1):
+def esri_curvature(X,cellsize=1,fill_with='esri',sign_and_scale='esri'):
 
     # Match common definition (Wood, ESRI, etc.) of cell size as L
     L = cellsize
@@ -330,16 +332,30 @@ def esri_curvature(X,cellsize=1):
     Z8 = ashift(X,5)
     Z9 = ashift(X,4)
 
-    # In cases where data are missing, ESRI seems to just fill
-    # in the original center pixel instead:
-    Z1[np.isnan(Z1)] = X[np.isnan(Z1)]
-    Z2[np.isnan(Z2)] = X[np.isnan(Z2)]
-    Z3[np.isnan(Z3)] = X[np.isnan(Z3)]
-    Z4[np.isnan(Z4)] = X[np.isnan(Z4)]
-    Z6[np.isnan(Z6)] = X[np.isnan(Z6)]
-    Z7[np.isnan(Z7)] = X[np.isnan(Z7)]
-    Z8[np.isnan(Z8)] = X[np.isnan(Z8)]
-    Z9[np.isnan(Z9)] = X[np.isnan(Z9)]
+    if fill_with=='esri':
+        # In cases where data are missing, ESRI seems to just fill
+        # in the original center pixel instead:
+        Z1[np.isnan(Z1)] = X[np.isnan(Z1)]
+        Z2[np.isnan(Z2)] = X[np.isnan(Z2)]
+        Z3[np.isnan(Z3)] = X[np.isnan(Z3)]
+        Z4[np.isnan(Z4)] = X[np.isnan(Z4)]
+        Z6[np.isnan(Z6)] = X[np.isnan(Z6)]
+        Z7[np.isnan(Z7)] = X[np.isnan(Z7)]
+        Z8[np.isnan(Z8)] = X[np.isnan(Z8)]
+        Z9[np.isnan(Z9)] = X[np.isnan(Z9)]
+    elif fill_with=='saga':
+        # Missing values are handled via a "finite differences" approach, given
+        # by Wilson and Gallant on page 53, equation 3.8.
+        idx = np.isnan(Z1); Z1[idx] = 2 * X[idx] - Z9[idx]
+        idx = np.isnan(Z2); Z2[idx] = 2 * X[idx] - Z8[idx]
+        idx = np.isnan(Z3); Z3[idx] = 2 * X[idx] - Z7[idx]
+        idx = np.isnan(Z4); Z4[idx] = 2 * X[idx] - Z6[idx]
+        idx = np.isnan(Z6); Z6[idx] = 2 * X[idx] - Z4[idx]
+        idx = np.isnan(Z7); Z7[idx] = 2 * X[idx] - Z3[idx]
+        idx = np.isnan(Z8); Z8[idx] = 2 * X[idx] - Z2[idx]        
+        idx = np.isnan(Z9); Z9[idx] = 2 * X[idx] - Z1[idx]
+    else:
+        print('No missing value fill method given.  Supply with "fillwith".  Results may be questionable.')        
 
     # Parameters given in Zevenburgen and Thorne (1987)
     A = ((Z1 + Z3 + Z7 + Z9)/4 - (Z2 + Z4 + Z6 + Z8)/2 + X)/(L**4);
@@ -353,23 +369,37 @@ def esri_curvature(X,cellsize=1):
 
     del Z1,Z2,Z3,Z4,Z6,Z7,Z8,Z9
 
-    curvature = -200 * (D + E)
+    # It's not clear to me that this sign is correct; it's the opposite of the
+    # laplacian, but may yet be consistent with the original Z&T.  At the
+    # moment, it's left this way to be consistent with ESRI.  The esri
+    # technical bulletin above refers to Moore et al. 1991
+    curvature = -2 * (D + E)
 
     np.seterr(divide='ignore', invalid='ignore')
-    P1 = D*(H**2)
-    P2 = E*(G**2)
-    P3 = F*G*H
-    P4 = (G**2) + (H**2)
-    planc = -200 * ((P1 + P2 - P3) / P4)
+    #P1 = D*(H**2)
+    #P2 = E*(G**2)
+    #P3 = F*G*H
+    #P4 = (G**2) + (H**2)
+    #planc = 2 * ((P1 + P2 - P3) / P4)
+    planc = 2*(D*H**2 + E*G**2 - F*G*H) / (G**2 + H**2)
     planc[np.isnan(planc)] = 0;
 
-    P1 = D*(G**2);
-    P2 = E*(H**2);
-    P3 = F*G*H;
-    P4 = (G**2) + (H**2);
-    profc = 200 * ((P1 + P2 + P3) / P4);
+    #P1 = D*(G**2);
+    #P2 = E*(H**2);
+    #P3 = F*G*H;
+    #P4 = (G**2) + (H**2);
+    #profc = -2 * ((P1 + P2 + P3) / P4);
+    profc = -2 * (D*G**2 + E*H**2 + F*G*H) / (G**2 + H**2)
     profc[np.isnan(profc)] = 0;
     np.seterr(divide='warn', invalid='warn')
+    
+    if sign_and_scale=='esri':
+        planc = -100 * planc
+        profc = -100 * profc
+        curvature = 100 * curvature
+    if sign_and_scale =='saga':
+        planc = -planc
+    # Otherwise, assume Z&T scaling
     
     # Fix nans; this likely needs another look
     #profc[np.isnan(profc) & np.isfinite(X)] = 0
@@ -443,6 +473,76 @@ def evans_curvature(X,cellsize=1):
     
 
     return cross_curvature, plan_curvature, profile_curvature, long_curvature, tan_curvature, shi_profile, shi_tan  
+
+
+#%%
+'''
+Returns:
+    Total Curvature (K)
+    Profile Curvature (Kp)
+    Plan / Contour Curvature (Kc)
+    Tangential Curvature (Kt)
+
+References
+----------
+Wilson and Gallant. 2000. Terrain Analysis: Principles and Applications.
+'''
+
+def wilson_gallant_curvature(X,cellsize=1):
+    
+    # Wilson and Gallant give cellsize as h, instead of the more common L
+    H = cellsize
+    
+    # WG use a somewhat unorthodox pixel naming scheme, going from Z1 in the
+    # upper right, clockwise to the top pixel (Z8), with the center pixel Z9
+    # Figure 3.1, page 52
+    Z1 = ashift(X,2)
+    Z2 = ashift(X,3)
+    Z3 = ashift(X,4)
+    Z4 = ashift(X,5)
+    Z5 = ashift(X,6)
+    Z6 = ashift(X,7)
+    Z7 = ashift(X,8)
+    Z8 = ashift(X,9)
+    Z9 = X # (unshifted)
+    
+    # Missing values are handled via a "finite differences" approach, given
+    # on page 53, equation 3.8.
+    idx = np.isnan(Z1); Z1[idx] = 2 * Z9[idx] - Z5[idx]
+    idx = np.isnan(Z2); Z2[idx] = 2 * Z9[idx] - Z6[idx]
+    idx = np.isnan(Z3); Z3[idx] = 2 * Z9[idx] - Z7[idx]
+    idx = np.isnan(Z4); Z4[idx] = 2 * Z9[idx] - Z8[idx]
+    idx = np.isnan(Z5); Z5[idx] = 2 * Z9[idx] - Z1[idx]
+    idx = np.isnan(Z6); Z6[idx] = 2 * Z9[idx] - Z2[idx]
+    idx = np.isnan(Z7); Z7[idx] = 2 * Z9[idx] - Z3[idx]
+    idx = np.isnan(Z8); Z8[idx] = 2 * Z9[idx] - Z4[idx]
+    
+    # Equations are given in formulas 3.1 to 3.7, page 52
+    ZX  = (Z2 - Z6) / (2 * H)            # Rightmost pixel minus leftmost pixel
+    ZY  = (Z8 - Z4) / (2 * H)            # Top pixel minus bottom pixel
+    ZXX = (Z2 - 2*Z9 + Z6) / H**2        # Average of right and left, minus center pixel
+    ZYY = (Z8 - 2*Z9 + Z4) / H**2        # Average of top and bottom, minus center pixel 
+    ZXY = (-Z7 + Z1 + Z5 - Z3) / 4*H**2  # (Upper right + lower left) - (upper left + lower right) 
+    P = ZX**2 + ZY**2
+    Q = P + 1
+    
+    # "Plan or contour curvature, the rate of change of aspect along a contour"
+    # Equation 3.16 / Page 57
+    Kc = (ZXX*ZY**2 - 2*ZXY*ZX*ZY + ZYY*ZX**2) / (P**1.5) 
+    
+    # "Profile curvature, the rate of change of potential slope down a flow line"
+    # Equation 3.15 / Page 57
+    Kp = (ZXX*ZX**2 + 2*ZXY*ZX*ZY + ZYY*ZY**2) / (P*Q**1.5)
+    
+    # "Tangential Curvature, Plan curvature multipled by the sine of the slope angle"
+    # Equation 3.17 / Page 57
+    Kt = (ZXX*ZX**2 + 2*ZXY*ZX*ZY + ZYY*ZY**2) / (P*Q**0.5)
+    
+    # Curvature, Equation 3.18, Page 57
+    K = ZXX**2 + 2*ZXY**2 + ZYY**2
+    
+    return K, Kp, Kc, Kt
+
     
 #%%
 # http://edndoc.esri.com/arcobjects/9.2/net/shared/geoprocessing/spatial_analyst_tools/how_hillshade_works.htm
@@ -877,8 +977,9 @@ def inpaint_nearest(X):
 #%%
     
 # ashift pulls a copy of the raster shifted.  0 shifts upper-left to lower right
-# 1 shifts top-to-bottom, etc.  Clockwise from upper left.
-def ashift(surface,direction,n=1,fillnan=False):
+# 1 shifts top-to-bottom, etc.  Clockwise from upper left. Use 0 to "grab" the
+# upper left pixel, 1 to "grab" up top pixel, etc.
+def ashift(surface,direction,n=1):
     surface = surface.copy()
     if direction==0:
         surface[n:,n:] = surface[0:-n,0:-n]
