@@ -170,9 +170,13 @@ References
 Ord, J.K. and A. Getis. 1995. Local Spatial Autocorrelation Statistics:
 Distribution Issues and an Application. Geographical Analysis, 27(4): 286-
 306. doi: 10.1111/j.1538-4632.1995.tb00912.x
+
+https://www.researchgate.net/post/What_is_the_difference_in_interpretation_of_results_between_Local_Morans_I_and_Getis_Ord_G
+
+https://community.esri.com/t5/arcgis-streetmap-premium/differences-between-local-spatial-statistics-results/td-p/358062#:~:text=In%20other%20words%2C%20the%20local,including%20the%20one%20in%20question.&text=Alternatively%2C%20it%20makes%20sense%20that,High%20surrounded%20by%20Low%20values.
 '''
 
-def rasterGi(X,footprint,mode='nearest',apply_correction=False):
+def rasterGi(X,footprint,mode='nearest',apply_correction=False,star=False):
     # Cast to a float; these operations won't all work on integers
     X = X.astype(np.float)
 
@@ -188,7 +192,10 @@ def rasterGi(X,footprint,mode='nearest',apply_correction=False):
         # This is the old line; leaving in for failure checking
         # m = np.floor(footprint/2).astype(np.int)
         footprint = np.ones((footprint,footprint),dtype=np.int)
-        footprint[m,m] = 0
+        
+        # Gi* includes the center value, Gi does not.
+        if not star:
+            footprint[m,m] = 0
         
     # How many non-nans do we have in the array?
     n = np.sum(np.isfinite(X))
