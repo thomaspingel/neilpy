@@ -235,13 +235,16 @@ def rasterGi(X,footprint,mode='nearest',apply_correction=False,star=False):
     
     # Create an ArcGIS-like Gi_Bin indicating CIs (90/95/99) for above-and-below
     Gi_Bin = np.zeros(np.shape(X)).astype(np.float)
+    np.seterr(divide='ignore', invalid='ignore')
     Gi_Bin[Z>a] = 1
     Gi_Bin[Z>b] = 2
     Gi_Bin[Z>c] = 3
     Gi_Bin[Z<-a] = -1
     Gi_Bin[Z<-b] = -2
     Gi_Bin[Z<-c] = -3
+    np.seterr(divide='warn', invalid='warn')   
     Gi_Bin[np.isnan(X)] = np.nan
+     
     
     # Return the binned value and the Z-score.  P is not returned since this
     # is directly calculable from Z
@@ -408,6 +411,8 @@ curvatures calculated, and scaling consistent with Z&T's original forumulation.
 Returns general, profile (geometric), plan (geometric), tangential, 
 longitudinal (Z&T's original and ESRI's PROFILE), and cross-sectional 
 (Z&T's original and ESRI's PLAN)
+
+K, K_profile, K_plan, K_tan, K_long, K_cross
 
 Outputs should be the same as SAGA, except SAGA's known sign inversion for 
 cross-sectional.  However, more work needs to be done to see how missing values
