@@ -1818,10 +1818,23 @@ def exif_dict_to_dd(exif_dict):
     lon = exif_dict['GPS'][4][0][0] + exif_dict['GPS'][4][1][0]/60 + exif_dict['GPS'][4][2][0]/(exif_dict['GPS'][4][2][1]*3600)
     if exif_dict['GPS'][3] == b'W':
         lon = -lon
-    alt = exif_dict['GPS'][6][0] / exif_dict['GPS'][6][1]
-    gpstime = str(exif_dict['GPS'][7][0][0]) + ':' + str(exif_dict['GPS'][7][1][0]).zfill(2) + ':' + str(exif_dict['GPS'][7][2][0]).zfill(2)
-    gpsdate = exif_dict['GPS'][29].decode("utf-8") 
-    clockdatetime = exif_dict['Exif'][36867].decode('utf-8')
+    alt, gpstime, gpsdate, clockdatetime = np.nan, np.nan, np.nan, np.nan
+    try:
+        alt = exif_dict['GPS'][6][0] / exif_dict['GPS'][6][1]
+    except:
+        pass
+    try:
+        gpstime = str(exif_dict['GPS'][7][0][0]) + ':' + str(exif_dict['GPS'][7][1][0]).zfill(2) + ':' + str(exif_dict['GPS'][7][2][0]).zfill(2)
+    except:
+        pass
+    try:
+        gpsdate = exif_dict['GPS'][29].decode("utf-8") 
+    except:
+        pass
+    try:
+        clockdatetime = exif_dict['Exif'][36867].decode('utf-8')
+    except:
+        pass
         
     return lon,lat,alt,gpstime,gpsdate,clockdatetime
 
@@ -1846,8 +1859,11 @@ def read_geotags_into_df(fns,return_datetimes=True):
         with Image.open(fn) as im:
             exif_dict = piexif.load(im.info["exif"])
             lon,lat,alt,gpstime,gpsdate,clockdatetime = exif_dict_to_dd(exif_dict)
-            gpsdate = str(gpsdate).replace(':','-')
-            gpsdatetime = gpsdate + ' ' + gpstime
+            if np.isfinite(gpsdate):
+                gpsdate = str(gpsdate).replace(':','-')
+                gpsdatetime = gpsdate + ' ' + gpstime
+            else:
+                gpsdatetime = np.nan
             
             #print(gpsdatetime)
             df = df.append([[fn,lat,lon,alt,gpsdatetime,clockdatetime]],ignore_index=True)
