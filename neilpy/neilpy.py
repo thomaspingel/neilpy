@@ -1859,7 +1859,7 @@ def read_geotags_into_df(fns,return_datetimes=True):
         with Image.open(fn) as im:
             exif_dict = piexif.load(im.info["exif"])
             lon,lat,alt,gpstime,gpsdate,clockdatetime = exif_dict_to_dd(exif_dict)
-            if np.isfinite(gpsdate):
+            if isinstance(gpsdate,str):
                 gpsdate = str(gpsdate).replace(':','-')
                 gpsdatetime = gpsdate + ' ' + gpstime
             else:
@@ -1933,3 +1933,45 @@ def set_print_options(places=2,width=0):
     np.set_printoptions(formatter={'float': lambda x: set_np.format(x)})
     pd.options.display.float_format = set_np.format
     
+#%%
+
+# For development, see \data\Projects\rpy_to_opk
+# Yaw is the same as Heading
+
+def ypr2opk(yaw,pitch,roll=0):
+    
+    if roll is not 0:
+        print('Roll values other than zero not yet supported.')
+    
+    kappa = -yaw
+    
+    # Phi and Omega are x and y cartesian coordinates on the unit circle, 
+    # multiplied by the pitch angle off nadir.  The function assumes the pitch
+    # is specied as off the horizon angle, the same as DJI drones.
+    phi = -(90+pitch)*np.cos((2.5*np.pi - np.deg2rad(yaw)) % (2*np.pi))     #x
+    omega = (90+pitch)*np.sin((2.5*np.pi - np.deg2rad(yaw)) % (2*np.pi))    #y
+    
+    return omega, phi, kappa
+
+
+#%%
+
+def track2azimuth(lat,lon):
+
+    lat1 = lat[:-1]
+    lat2 = lat[1:]
+    lon1 = lon[:-1]
+    lon2 = lon[1:]
+
+    geodesic = pyproj.Geod(ellps='WGS84')
+    fwd_azimuth,back_azimuth,distance = geodesic.inv(lon1, lat1, lon2, lat2)
+    
+    # Add last value on to the end, 
+    fwd_azimuth = np.append(fwd_azimuth,fwd_azimuth[-1])
+    
+    fwd_azimuth = np.mod(fwd_azimuth + 360,360)
+    
+    return fwd_azimuth
+
+
+
