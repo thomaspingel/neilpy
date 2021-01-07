@@ -44,6 +44,8 @@ from skimage.morphology import disk
 import cv2
 import imageio
 
+import pyproj
+
 import geopandas
 import datetime
 
