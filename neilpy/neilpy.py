@@ -425,7 +425,7 @@ https://dx.doi.org/10.1002/esp.3290120107
 https://desktop.arcgis.com/en/arcmap/10.3/tools/spatial-analyst-toolbox/how-curvature-works.htm
 https://support.esri.com/en/technical-article/000005086
 '''
-def zevenburgen_and_thorne_curvature(X,cellsize=1):
+def zevenbergen_and_thorne_curvature(X,cellsize=1):
 
     # Match common definition (Wood, ESRI, etc.) of cell size as L
     L = cellsize
