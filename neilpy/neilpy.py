@@ -176,39 +176,61 @@ Distribution Issues and an Application. Geographical Analysis, 27(4): 286-
 https://www.researchgate.net/post/What_is_the_difference_in_interpretation_of_results_between_Local_Morans_I_and_Getis_Ord_G
 
 https://community.esri.com/t5/arcgis-streetmap-premium/differences-between-local-spatial-statistics-results/td-p/358062#:~:text=In%20other%20words%2C%20the%20local,including%20the%20one%20in%20question.&text=Alternatively%2C%20it%20makes%20sense%20that,High%20surrounded%20by%20Low%20values.
+
+https://www.youtube.com/watch?v=urfsjGo-XXc
+
+https://www.youtube.com/watch?v=_0Tzo1qbN-A
+
 '''
 
-def rasterGi(X,footprint,mode='nearest',apply_correction=False,star=False):
+
+
+def rasterGi(X,footprint=1,mode='nearest',apply_correction=False,star=False):
+
     # Cast to a float; these operations won't all work on integers
     X = X.astype(np.float)
 
     # If a footprint was provided as a size, assume this is a radius (a change
     # starting in neilpy v.0.17, prior to which is was used directly as the 
-    # size) and make a square structuring element     # with a zero at the 
-    # center.
+    # size) and make a square structuring element.  Otherwise, assume it is 
+    # a footprint/structuring element, and calculate whether this is star or 
+    # not.  This will override a supplied value of star!
     if np.isscalar(footprint):
-        # This becomes the center pixel
-        m = footprint
-        # assume the footprint is a radius, so make a diameter
-        footprint = 2 * footprint + 1
-        # This is the old line; leaving in for failure checking
-        # m = np.floor(footprint/2).astype(np.int)
+        m = footprint # This becomes the center pixel
+        footprint = 2 * footprint + 1  # now a diameter
         footprint = np.ones((footprint,footprint),dtype=np.int)
         
         # Gi* includes the center value, Gi does not.
         if not star:
             footprint[m,m] = 0
+    else:
+        m = np.floor(np.shape(footprint)[0] / 2).astype(int)
+        if footprint[m,m] == 0:
+            star = False
+        else:
+            star = True
         
     # How many non-nans do we have in the array?
     n = np.sum(np.isfinite(X))
 
-    # A vectorized operation to calculate the global mean and variance at each
-    # pixel, excluding that pixel.
-    mean_not_me = (np.nansum(X) - X) / (n-1)
-    var_not_me = ((np.nansum(X**2) - X**2) / (n-1)) - mean_not_me**2
-    
-    mean_not_me[np.isnan(X)] = np.nan
-    var_not_me[np.isnan(X)] = np.nan
+    # A vectorized operation to calculate the global mean and variance at each 
+    # pixel.  For Gi, this needs to exclude each pixel's own value.  For Gi*
+    # it is the global mean.  This could be a scalar value, but keeping it an 
+    # array for consistency, and taking a small hit on memory performance.  
+    # TODO: We should reexamine that choice.
+    if star==False:
+        global_mean = (np.nansum(X) - X) / (n-1)
+        global_var = ((np.nansum(X**2) - X**2) / (n-1)) - global_mean**2
+        global_mean[np.isnan(X)] = np.nan
+        global_var[np.isnan(X)] = np.nan        
+    else:
+        global_mean = np.nanmean(X) 
+        global_var = np.nanstd(X)**2
+        #global_mean = np.nanmean(X) * np.ones_like(X)
+        #global_var = np.nanstd(X) * np.ones_like(X)
+        
+    #global_mean[np.isnan(X)] = np.nan
+    #global_var[np.isnan(X)] = np.nan
 
     # Within the strucutring element how many neighbors at each point?
     if np.all(np.isfinite(X)):
@@ -219,9 +241,12 @@ def rasterGi(X,footprint,mode='nearest',apply_correction=False,star=False):
         w_neighbors[np.isnan(X)] = np.nan
 
     # Calculate Gi
-    a = ndi.filters.generic_filter(X,np.nansum,footprint=footprint,mode=mode) - w_neighbors* mean_not_me
-    b = np.sqrt((w_neighbors / (n-2)) * (n-1-w_neighbors) * var_not_me)
-    del mean_not_me, var_not_me
+    a = ndi.filters.generic_filter(X,np.nansum,footprint=footprint,mode=mode) - w_neighbors* global_mean
+    if star:
+        b = np.sqrt((w_neighbors / (n-1)) * (n-w_neighbors) * global_var)
+    else:
+        b = np.sqrt((w_neighbors / (n-2)) * (n-1-w_neighbors) * global_var)
+    del global_mean, global_var
     Z = a / b
     del a,b
     
@@ -229,28 +254,29 @@ def rasterGi(X,footprint,mode='nearest',apply_correction=False,star=False):
     
     if apply_correction == True:
         Z = (Z-np.nanmean(Z)) / np.nanstd(Z)
+        
+    # P = 2 * (1 - scipy.special.ndtr(Z)) OR
+    P = stats.norm.sf(abs(Z))*2    
     
     # Calculate Z-scores for CIs of 10, 5, and 1 percent (adjust for tails)
-    a = stats.norm.ppf(.95)
-    b = stats.norm.ppf(.975)
-    c = stats.norm.ppf(.995)
+    #a = stats.norm.ppf(.95)
+    #b = stats.norm.ppf(.975)
+    #c = stats.norm.ppf(.995)
     
     # Create an ArcGIS-like Gi_Bin indicating CIs (90/95/99) for above-and-below
-    Gi_Bin = np.zeros(np.shape(X)).astype(np.float)
+    sig_bin = np.zeros_like(X,dtype=np.float)
     np.seterr(divide='ignore', invalid='ignore')
-    Gi_Bin[Z>a] = 1
-    Gi_Bin[Z>b] = 2
-    Gi_Bin[Z>c] = 3
-    Gi_Bin[Z<-a] = -1
-    Gi_Bin[Z<-b] = -2
-    Gi_Bin[Z<-c] = -3
+    sig_bin[P<.1] = 1
+    sig_bin[P<.05] = 2
+    sig_bin[P<.01] = 3
+    sig_bin[Z<0] = - sig_bin[Z<0]
+    sig_bin[P>=.1] = 0
     np.seterr(divide='warn', invalid='warn')   
-    Gi_Bin[np.isnan(X)] = np.nan
+    sig_bin[np.isnan(X)] = np.nan
      
     
-    # Return the binned value and the Z-score.  P is not returned since this
-    # is directly calculable from Z
-    return Gi_Bin, Z
+    # Return the z-score, the p-value, and the significance bin
+    return Z, P, sig_bin
 
 
 #%% Raster visualization functions
