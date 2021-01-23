@@ -151,6 +151,11 @@ def gi_formula(x,n,m,v):
     Gi =(np.nansum(x) - k*m) / np.sqrt((k * (n-1-k) * v) / (n-2))
     return Gi
 
+def gistar_formula(x,n,m,v):
+    k = np.sum(np.isfinite(x)).astype(np.int) # number of non-nan neighbors
+    Gi =(np.nansum(x) - k*m) / np.sqrt((k * (n-k) * v) / (n-1))
+    return Gi
+
 
 '''
 Calculated Getis-Ord Gi Statistic of local autocorrelation on a raster.
@@ -192,9 +197,10 @@ def rasterGi(X,footprint=1,mode='nearest',apply_correction=False,star=False):
 
     # If a footprint was provided as a size, assume this is a radius (a change
     # starting in neilpy v.0.17, prior to which is was used directly as the 
-    # size) and make a square structuring element.  Otherwise, assume it is 
+    # size) and make a SQUARE structuring element.  Otherwise, assume it is 
     # a footprint/structuring element, and calculate whether this is star or 
     # not.  This will override a supplied value of star!
+    # If you want a circular element, use a disk(radius)!
     if np.isscalar(footprint):
         m = footprint # This becomes the center pixel
         footprint = 2 * footprint + 1  # now a diameter
@@ -226,11 +232,6 @@ def rasterGi(X,footprint=1,mode='nearest',apply_correction=False,star=False):
     else:
         global_mean = np.nanmean(X) 
         global_var = np.nanstd(X)**2
-        #global_mean = np.nanmean(X) * np.ones_like(X)
-        #global_var = np.nanstd(X) * np.ones_like(X)
-        
-    #global_mean[np.isnan(X)] = np.nan
-    #global_var[np.isnan(X)] = np.nan
 
     # Within the strucutring element how many neighbors at each point?
     if np.all(np.isfinite(X)):
@@ -240,8 +241,9 @@ def rasterGi(X,footprint=1,mode='nearest',apply_correction=False,star=False):
         w_neighbors = w_neighbors.astype(np.float)
         w_neighbors[np.isnan(X)] = np.nan
 
-    # Calculate Gi
+    # Calculate the numerator of Gi using a generic filter
     a = ndi.filters.generic_filter(X,np.nansum,footprint=footprint,mode=mode) - w_neighbors* global_mean
+    # Different calculations for denominator, for Gi and Gi*
     if star:
         b = np.sqrt((w_neighbors / (n-1)) * (n-w_neighbors) * global_var)
     else:
@@ -2003,3 +2005,26 @@ def track2azimuth(lat,lon):
 
 
 
+#%%
+
+# This has not been thoroughly tested
+# TODO, add other kernels at https://www.nearearthimaginglab.org/lab_reports/2020/2020-08-13/pingel.20200813.pdf
+# For simple binary kernels, just use disk(radius)
+
+def distance_kernel(radius,cellsize=1,method='binary',idw_power=2):
+
+    radius_in_pixels = radius / cellsize
+    window = (np.round(2 * radius_in_pixels)).astype(int)
+    if window%2 == 0:
+        window = window + 1
+    xi,yi = np.meshgrid(np.arange(window)-np.floor(window/2),np.arange(window)-np.floor(window/2))
+    D = (xi**2 + yi**2)**.5
+    
+    if method=='idw':
+        return 1 / D**idw_power
+    elif method=='binary':
+        return D < radius/cellsize
+    elif method=='distance':
+        return D
+    else:
+        return D
