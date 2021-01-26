@@ -542,18 +542,16 @@ def evans_curvature(X,cellsize=1):
     z8 = ashift(X,5)
     z9 = ashift(X,4)
     
-    # As with ESRI, we're going to fill any missing values with the value
-    # of the center pixel.  A better move might be to have a warning for this
-    # and prompt the user that this is happening, or that they should use
-    # an interpolator to fill the holes more intentionally before proceeding
-    # z1[np.isnan(z1)] = X[np.isnan(z1)]
-    # z2[np.isnan(z2)] = X[np.isnan(z2)]
-    # z3[np.isnan(z3)] = X[np.isnan(z3)]
-    # z4[np.isnan(z4)] = X[np.isnan(z4)]
-    # z6[np.isnan(z6)] = X[np.isnan(z6)]
-    # z7[np.isnan(z7)] = X[np.isnan(z7)]
-    # z8[np.isnan(z8)] = X[np.isnan(z8)]
-    # z9[np.isnan(z9)] = X[np.isnan(z9)]    
+    # Missing values are handled via a "finite differences" approach, given
+    # by Wilson and Gallant on page 53, equation 3.8.
+    idx = np.isnan(z1); z1[idx] = 2 * X[idx] - z9[idx]
+    idx = np.isnan(z2); z2[idx] = 2 * X[idx] - z8[idx]
+    idx = np.isnan(z3); z3[idx] = 2 * X[idx] - z7[idx]
+    idx = np.isnan(z4); z4[idx] = 2 * X[idx] - z6[idx]
+    idx = np.isnan(z6); z6[idx] = 2 * X[idx] - z4[idx]
+    idx = np.isnan(z7); z7[idx] = 2 * X[idx] - z3[idx]
+    idx = np.isnan(z8); z8[idx] = 2 * X[idx] - z2[idx]        
+    idx = np.isnan(z9); z9[idx] = 2 * X[idx] - z1[idx]
     
 
     # From Wood (1991), pages 91 and 92
@@ -568,30 +566,35 @@ def evans_curvature(X,cellsize=1):
 
     # From Wood, page 85-87; lon
     np.seterr(divide='ignore', invalid='ignore')
-    profile_curvature = -200 * (A*D**2 + B*E**2 + C*D*E) / ((E**2+D**2)*((1+D**2+E**2)**1.5))
-    plan_curvature = 200 * (B*D**2 + A*E**2 - C*D*E) / ((E**2 + D**2)**1.5)
-    cross_curvature = -200 * (B*D**2 + A*E**2 - C*D*E) / (D**2 + E**2)
-    long_curvature = -200 * (A*D**2 + B*E**2 + C*D*E) / (D**2 + E**2)
-
-    # Calculate tangential curvature based on Krcho (1991) equation as seen in Schmidt et al (2003)
-    tan_curvature = cross_curvature / ((D**2 + E**2 + 1)**.5)
     
-    # Shi versions, this probably isn't right.
-    shi_profile = (A*D**2 + 2*C*D*E + B*E**2) / (D**2+E**2)*((1+D**2+E**2)**1.5)
-    shi_tan = (A*E**2 - 2*C*D*E + B*D**2) / (D**2+E**2)*((1+D**2+E**2)**.5)
+    # Extrapolated from the ESRI equation; note terms are different A is Fxx here
+    K = -2 * (A + B)
+
+    # These have been re-written to produce output in line with SAGA.  Minar 
+    # claims (2020, page 15) that "Longitudinal, cross-sectional, maximal, and
+    # minimal are miscomputed see also black boxes indicating incorrect 
+    # calculation in Table 5, page 14.
+    # See Schmidt (Table 1) and Wood (page 87)
+    # to revisit this issue and Equations in Table 3 of Minar
+    
+    # K_profile = -200 * (A*D**2 + B*E**2 + C*D*E) / ((E**2+D**2)*((1+D**2+E**2)**1.5)) OLD AS SEEN IN WOOD
+    K_profile = -(A*D**2 + 2*C*D*E+B*E**2) / ((D**2+E**2)*((D**2+E**2+1)**1.5))  # New as seen in Schmidt Table 1
+    K_cross = -2 * (B*D**2 + A*E**2 - C*D*E) / (D**2 + E**2)
+    K_long = -2 * (A*D**2 + B*E**2 + C*D*E) / (D**2 + E**2)
+    K_tan = -(A*E**2 - 2*C*D*E + B*D**2) / ((D**2 + E**2)*((D**2 + E**2 + 1)**.5)) # As seen in Schmidt Table 1
+    K_plan = -(A*E**2 - 2*C*D*E + B*D**2) / (D**2+E**2)**1.5 
+
     
     np.seterr(divide='warn', invalid='warn')
     
     # Fix nans
-    profile_curvature[np.isnan(profile_curvature) & np.isfinite(X)] = 0
-    plan_curvature[np.isnan(plan_curvature) & np.isfinite(X)] = 0
-    cross_curvature[np.isnan(cross_curvature) & np.isfinite(X)] = 0
-    long_curvature[np.isnan(long_curvature) & np.isfinite(X)] = 0
-    tan_curvature[np.isnan(tan_curvature) & np.isfinite(X)] = 0
+    K_profile[np.isnan(K_profile) & np.isfinite(X)] = 0
+    K_plan[np.isnan(K_plan) & np.isfinite(X)] = 0
+    K_cross[np.isnan(K_cross) & np.isfinite(X)] = 0
+    K_long[np.isnan(K_long) & np.isfinite(X)] = 0
+    K_tan[np.isnan(K_tan) & np.isfinite(X)] = 0
     
-    
-
-    return cross_curvature, plan_curvature, profile_curvature, long_curvature, tan_curvature, shi_profile, shi_tan  
+    return K, K_profile, K_plan, K_tan, K_long, K_cross 
 
 
 #%%
