@@ -133,8 +133,14 @@ def imwrite(fn,im,metadata=None):
     if metadata is None:
         imageio.imwrite(fn,im)
     else:
+        metadata['dtype'] = im.dtype
         with rasterio.open(fn, 'w', **metadata) as dst:
-            dst.write(im, 1) 
+            if np.ndim(im)==2:
+                dst.write(im, 1)
+            else:
+                bands = np.min(np.shape(im))
+                for i in range(bands):
+                    dst.write(im, i+1)
 
 
 #%% Spatial Autocorrelation Functions
