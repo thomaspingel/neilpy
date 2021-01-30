@@ -140,7 +140,7 @@ def imwrite(fn,im,metadata=None):
             else:
                 bands = np.min(np.shape(im))
                 for i in range(bands):
-                    dst.write(im, i+1)
+                    dst.write(im, i+1   )
 
 
 #%% Spatial Autocorrelation Functions
