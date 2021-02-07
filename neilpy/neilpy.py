@@ -2037,3 +2037,89 @@ def distance_kernel(radius,cellsize=1,method='binary',idw_power=2):
         return D
     else:
         return D
+    
+#%%
+# From Tobler. 1993. THREE PRESENTATIONS ON GEOGRAPHICAL ANALYSIS AND MODELING
+# Returns velocity in km/hr
+def lcp_cost_tobler_hiking_function(S,slope_in='degrees',ve=1,symmetric=True,return_cost=True):
+
+    if slope_in=='degrees':
+        S = np.tan(np.deg2rad(S))
+    if slope_in=='radians':
+        S = np.tan(S)
+    # Otherwise, slopes are assumed to be dz/dx
+    
+    S = ve * S
+    
+    V = 6 * np.exp(-3.5 * np.abs(S + .05))
+    
+    if symmetric:
+        V = (V + 6 * np.exp(-3.5 * np.abs(S + .05))) / 2
+        
+    if return_cost:
+        V = 1 / V
+        if return_relative:
+            V = V / np.nanmin(V)
+        return V
+    else:
+        return V
+
+#%%%
+# From Rademaker et al. (2012)
+
+# weight of traveler is given in kg
+# weight of pack is given in kg
+# terrain coefficients greater than 1 introduce "friction"
+# velocity is Walking speed in meters per second
+
+def lcp_cost_rademaker(S,slope_in='degrees',weight=50,pack_weight=0,terrain_coefficient=1.1,velocity=1.2,ve=1):
+    if slope_in=='degrees':
+        S = np.tan(np.deg2rad(S))
+    if slope_in=='radians':
+        S = np.tan(S)
+    # Otherwise, slopes are assumed to be dz/dx
+    
+    S = ve * S
+   
+    # Rademaker assumes a grade in percent (0 to 100, rather than 0 to 1):
+    S = 100 * S
+    
+    W = weight
+    L = pack_weight
+    tc = terrain_coefficient
+    V = velocity
+    
+    # Cost, in MWatts
+    MW = 1.5*W + 2.0 * (W + L) * ((L/W)**2) + tc * (W+L) * (1.5 * V**2 + .35 * V * S)
+    
+    if return_relative:
+        MW = MW / np.nanmin(MW)
+    
+    return MW
+
+
+#%%
+
+def lcp_cost_pingel_exponential(S,scale_factor=9.25,slope_in='degrees',ve=1):
+
+    if slope_in=='degrees':
+        S = np.tan(np.deg2rad(S))
+    if slope_in=='radians':
+        S = np.tan(S)
+    # Otherwise, slopes are assumed to be dz/dx
+    
+    # Apply vertical exaggeration:
+    if ve != 1:
+        S = ve * S
+    
+    # Convert back to degrees
+    S = np.rad2deg(np.arctan(S))
+    
+    EXP = stats.expon.pdf(0,0,scale_factor) / stats.expon.pdf(S,0,scale_factor) 
+    
+    return EXP
+    
+    
+    
+    
+    
