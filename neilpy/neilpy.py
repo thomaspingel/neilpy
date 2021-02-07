@@ -2041,28 +2041,18 @@ def distance_kernel(radius,cellsize=1,method='binary',idw_power=2):
 #%%
 # From Tobler. 1993. THREE PRESENTATIONS ON GEOGRAPHICAL ANALYSIS AND MODELING
 # Returns velocity in km/hr
-def lcp_cost_tobler_hiking_function(S,slope_in='degrees',ve=1,symmetric=True,return_cost=True):
+def lcp_cost_tobler_hiking_function(S,symmetric=True):
 
-    if slope_in=='degrees':
-        S = np.tan(np.deg2rad(S))
-    if slope_in=='radians':
-        S = np.tan(S)
-    # Otherwise, slopes are assumed to be dz/dx
-    
-    S = ve * S
+    # Convert to dz/dx
+    S = np.tan(np.deg2rad(S))
     
     V = 6 * np.exp(-3.5 * np.abs(S + .05))
     
     if symmetric:
-        V = (V + 6 * np.exp(-3.5 * np.abs(S + .05))) / 2
+        V2 = 6 * np.exp(-3.5 * np.abs(-S + .05))
+        V = (V + V2) / 2
         
-    if return_cost:
-        V = 1 / V
-        if return_relative:
-            V = V / np.nanmin(V)
-        return V
-    else:
-        return V
+    return 1 / V
 
 #%%%
 # From Rademaker et al. (2012)
@@ -2072,17 +2062,10 @@ def lcp_cost_tobler_hiking_function(S,slope_in='degrees',ve=1,symmetric=True,ret
 # terrain coefficients greater than 1 introduce "friction"
 # velocity is Walking speed in meters per second
 
-def lcp_cost_rademaker(S,slope_in='degrees',weight=50,pack_weight=0,terrain_coefficient=1.1,velocity=1.2,ve=1):
-    if slope_in=='degrees':
-        S = np.tan(np.deg2rad(S))
-    if slope_in=='radians':
-        S = np.tan(S)
-    # Otherwise, slopes are assumed to be dz/dx
-    
-    S = ve * S
+def lcp_cost_rademaker(S,weight=50,pack_weight=0,terrain_coefficient=1.1,velocity=1.2):
    
     # Rademaker assumes a grade in percent (0 to 100, rather than 0 to 1):
-    S = 100 * S
+    G = 100 * np.arctan(np.deg2rad(S))
     
     W = weight
     L = pack_weight
@@ -2090,36 +2073,22 @@ def lcp_cost_rademaker(S,slope_in='degrees',weight=50,pack_weight=0,terrain_coef
     V = velocity
     
     # Cost, in MWatts
-    MW = 1.5*W + 2.0 * (W + L) * ((L/W)**2) + tc * (W+L) * (1.5 * V**2 + .35 * V * S)
-    
-    if return_relative:
-        MW = MW / np.nanmin(MW)
+    MW = 1.5*W + 2.0 * (W + L) * ((L/W)**2) + tc * (W+L) * (1.5 * V**2 + .35 * V * G)
     
     return MW
 
 
 #%%
 
-def lcp_cost_pingel_exponential(S,scale_factor=9.25,slope_in='degrees',ve=1):
+def lcp_cost_pingel_exponential(S,scale_factor=9.25):
 
-    if slope_in=='degrees':
-        S = np.tan(np.deg2rad(S))
-    if slope_in=='radians':
-        S = np.tan(S)
-    # Otherwise, slopes are assumed to be dz/dx
-    
-    # Apply vertical exaggeration:
-    if ve != 1:
-        S = ve * S
-    
-    # Convert back to degrees
-    S = np.rad2deg(np.arctan(S))
-    
     EXP = stats.expon.pdf(0,0,scale_factor) / stats.expon.pdf(S,0,scale_factor) 
     
     return EXP
     
+#%%    
     
-    
-    
-    
+def ve(S,ve=2.3):
+    S = np.tan(np.deg2rad(S))
+    S = np.rad2deg(np.arctan(ve *  S))
+    return S
