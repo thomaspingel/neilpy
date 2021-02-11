@@ -125,11 +125,9 @@ def imread(fn, return_metadata=True, fix_nodata=False, force_float=False):
     
 #%%
 
-# TODO: check # bands, and write these out properly; 
-#       ATM, geospatial write out only supported for a single layer
-# TODO: support writing of indexed /colormapped data
+# TODO: verify multi-layer write and colormap write
 
-def imwrite(fn,im,metadata=None):
+def imwrite(fn,im,metadata=None,colormap=None):
     if metadata is None:
         imageio.imwrite(fn,im)
     else:
@@ -137,10 +135,17 @@ def imwrite(fn,im,metadata=None):
         with rasterio.open(fn, 'w', **metadata) as dst:
             if np.ndim(im)==2:
                 dst.write(im, 1)
+                if colormap is not None:
+                    dst.write_colormap(1,colormap)
             else:
                 bands = np.min(np.shape(im))
+                metadata['count'] = bands
                 for i in range(bands):
-                    dst.write(im, i+1   )
+                    sm_dim = np.argsort(np.shape(im))[0]  # smallest dimension; some rasters are 3xmxn, some are mxnx3
+                    if sm_dim==0:
+                        dst.write(im[i,:,:],i+1)
+                    else:
+                        dst.write(im[:,:,i],i+1)
 
 
 #%% Spatial Autocorrelation Functions
@@ -1131,11 +1136,18 @@ def ashift(surface,direction,n=1):
 #%%
 
 
-
+def progressive_window(min_value,max_value,percent):
+    this_list = np.array([min_value],dtype=np.int32)
+    last_value = min_value
+    while last_value < max_value:
+        last_value = np.ceil(last_value*(100+percent)/100).astype(np.int32)
+        if last_value <= max_value:
+            this_list = np.append(this_list,last_value)
+    return this_list
 
 #%%
 
-def openness(Z,cellsize=1,lookup_pixels=1,neighbors=np.arange(8),skyview=False):
+def openness(Z,cellsize=1,lookup_pixels=1,neighbors=np.arange(8),skyview=False,fast=False,how_fast=20):
 
     nrows, ncols = np.shape(Z)
         
@@ -1150,7 +1162,10 @@ def openness(Z,cellsize=1,lookup_pixels=1,neighbors=np.arange(8),skyview=False):
     dlist = np.array([np.sqrt(2),1])
 
     # Calculate minimum angles        
-    for L in np.arange(1,lookup_pixels+1):
+    test_range = np.arange(1,lookup_pixels+1)   
+    if fast==True:
+        test_range = progressive_window(1, lookup_pixels, how_fast)
+    for L in test_range:
         for i,direction in enumerate(neighbors):
             # Map distance to this pixel:
             dist = dlist[direction % 2]
@@ -1162,7 +1177,8 @@ def openness(Z,cellsize=1,lookup_pixels=1,neighbors=np.arange(8),skyview=False):
             opn[i,:,:] = this_layer
 
     # Openness is definted as the mean of the minimum angles of all 8 neighbors  
-    return np.mean(opn,0)
+    # Return in degrees, though:
+    return np.rad2deg(np.mean(opn,0))
 
 #%% 
     
@@ -1336,7 +1352,7 @@ def terrain_code_to_geomorphon(terrain_code,method='loose'):
     return geomorphon
                 
 #%%
-def geomorphon_cmap():
+def geomorphon_cmap_old():
     lut = [255,255,255, \
     220,220,220, \
     56,0,0, \
@@ -1349,6 +1365,19 @@ def geomorphon_cmap():
     0,0,255, \
     0,0,56]
     return lut
+
+def geomorphon_cmap():
+    d = {1: (220,220,220),
+         2: (56,0,0), 
+         3: (200,0,0),
+         4: (255,80,20),
+         5: (250,210,60),
+         6: (255,255,60),
+         7: (180,230,20),
+         8: (60,250,150),
+         9: (0,0,255),
+         10: (0,0,56)}
+    return d
     
 #%%
 '''
@@ -1393,26 +1422,27 @@ def get_geomorphons(Z,cellsize=1,lookup_pixels=5,threshold_angle=1,use_negative_
 
 
 #%%  Edit to try to include the "correction of forms" section in J&S
-    
-def count_openness(Z,cellsize,lookup_pixels,threshold_angle):
+def count_openness(Z,cellsize,lookup_pixels,threshold_angle,fast=False,how_fast=20):
     
     num_pos = np.zeros(np.shape(Z),dtype=np.uint8)
     num_neg = np.zeros(np.shape(Z),dtype=np.uint8)
         
     for i in range(8):        
-        O = openness(Z,cellsize,lookup_pixels,neighbors=np.array([i]))
-        O = O - openness(-Z,cellsize,lookup_pixels,neighbors=np.array([i]))
+        O = openness(Z,cellsize,lookup_pixels,neighbors=np.array([i]),fast=fast,how_fast=how_fast)
+        O = O - openness(-Z,cellsize,lookup_pixels,neighbors=np.array([i]),fast=fast,how_fast=how_fast)
         num_pos[O > threshold_angle] = num_pos[O > threshold_angle] + 1
         num_neg[O < -threshold_angle] = num_neg[O < -threshold_angle] + 1
     return num_pos, num_neg
+
+
     
 #%%
 # This is the best go-to function for calcluating a geomorhon from an openness
 # calculation.    
-def get_geomorphon_from_openness(Z,cellsize=1,lookup_pixels=1,threshold_angle=1,enhance=False):
+def get_geomorphon_from_openness(Z,cellsize=1,lookup_pixels=1,threshold_angle=1,enhance=False,fast=False,how_fast=20):
 
     
-    num_pos, num_neg = count_openness(Z,cellsize,lookup_pixels,threshold_angle)
+    num_pos, num_neg = count_openness(Z,cellsize,lookup_pixels,threshold_angle,fast,how_fast)
           
     
     lookup_table = np.zeros((9,9),dtype=np.uint8)
