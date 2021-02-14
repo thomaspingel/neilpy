@@ -1890,6 +1890,8 @@ def exif_dict_to_dd(exif_dict):
     alt, gpstime, gpsdate, clockdatetime = np.nan, np.nan, np.nan, np.nan
     try:
         alt = exif_dict['GPS'][6][0] / exif_dict['GPS'][6][1]
+        if exif_dict['GPS'][5]==1:
+            alt = -alt
     except:
         pass
     try:
