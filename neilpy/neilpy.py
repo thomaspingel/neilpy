@@ -2124,3 +2124,45 @@ def ve(S,ve=2.3):
     S = np.tan(np.deg2rad(S))
     S = np.rad2deg(np.arctan(ve *  S))
     return S
+
+#%%
+
+def scaled_morphometry(X,cellsize=1,lookup_pixels=1):
+    
+    L = cellsize * lookup_pixels
+
+    nrows, ncols = np.shape(X)
+    
+    z1 = ashift(X,0,lookup_pixels)
+    z2 = ashift(X,1,lookup_pixels)
+    z3 = ashift(X,2,lookup_pixels)
+    z4 = ashift(X,7,lookup_pixels)
+    z6 = ashift(X,3,lookup_pixels)
+    z7 = ashift(X,6,lookup_pixels)
+    z8 = ashift(X,5,lookup_pixels)
+    z9 = ashift(X,4,lookup_pixels)
+
+    # From Wood (1991), pages 91 and 92
+    A = (z1 + z3 + z4 + z6 + z7 + z9)/(6*L**2) - (z2+X+z8)/(3*L**2)    # Fxx
+    B = (z1  + z2 + z3 + z7 + z8 + z9)/(6*L**2) - (z4+X+z6)/(3*L**2)   # Fyy
+    C = (z3 + z7 - z1 -z9) / (4*L**2)                                  # Fxy
+    D = (z3+z6+z9-z1-z4-z7) / (6*L)                                    # Fx
+    E = (z1+z2+z3-z7-z8-z9)/(6*L)                                      # Fy
+    F = (2*(z2+z4+z6+z8)-(z1+z3+z7+z9)+5*X) / 9
+    
+    SM = {}
+
+
+    np.seterr(divide='ignore', invalid='ignore')    
+    SM['A'] = np.mod(270-np.rad2deg(np.arctan2(E,D)),360)
+    SM['S'] = np.rad2deg(np.arctan((D**2 + E**2)**.5))
+    SM['K'] = -2 * (A + B)
+    SM['K_profile'] = -(A*D**2 + 2*C*D*E+B*E**2) / ((D**2+E**2)*((D**2+E**2+1)**1.5))  # New as seen in Schmidt Table 1
+    SM['K_cross'] = -2 * (B*D**2 + A*E**2 - C*D*E) / (D**2 + E**2)
+    SM['K_long'] = -2 * (A*D**2 + B*E**2 + C*D*E) / (D**2 + E**2)
+    SM['K_tan'] = -(A*E**2 - 2*C*D*E + B*D**2) / ((D**2 + E**2)*((D**2 + E**2 + 1)**.5)) # As seen in Schmidt Table 1
+    SM['K_plan'] = -(A*E**2 - 2*C*D*E + B*D**2) / (D**2+E**2)**1.5
+    np.seterr(divide='warn', invalid='warn')
+             
+        
+    return SM
