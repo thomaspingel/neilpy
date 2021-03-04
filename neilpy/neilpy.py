@@ -41,7 +41,7 @@ from scipy import interpolate
 from PIL import Image
 from skimage.util import apply_parallel
 from skimage.morphology import disk
-import cv2
+#import cv2
 import imageio
 
 import pyproj
