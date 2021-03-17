@@ -53,6 +53,12 @@ from pyproj import Transformer
 
 import piexif
 
+from sklearn.metrics import cohen_kappa_score
+from sklearn.metrics import confusion_matrix
+from sklearn.metrics import f1_score
+from sklearn.metrics import classification_report
+from sklearn.metrics import accuracy_score
+
 # Global variable to help load data files (PNG-based color tables, etc.)
 neilpy_dir = os.path.dirname(inspect.stack()[0][1])
 
@@ -2166,3 +2172,31 @@ def scaled_morphometry(X,cellsize=1,lookup_pixels=1):
              
         
     return SM
+
+
+#%%
+
+def score(A,B,k=100000,mask=None):
+    if mask is None:
+        A = A.flatten()
+        B = B.flatten()
+    else:
+        A = A[mask].flatten()
+        B = B[mask].flatten()
+        
+    if k > len(A):
+        k = len(A)
+        
+    s = np.random.choice(len(A),k,replace=True)
+    kappa = cohen_kappa_score(A[s],B[s])
+    cmatrix = confusion_matrix(A[s],B[s])
+    f1 = f1_score(A[s],B[s])
+    ac = accuracy_score(A[s],B[s])
+    
+    result = {'cohen_kappa_score':kappa,
+              'confusion_matrix':cmatrix,
+              'f1_score':f1,
+              'accuracy_score':ac}
+    
+    return result
+    
