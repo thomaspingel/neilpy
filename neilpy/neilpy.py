@@ -59,6 +59,8 @@ from sklearn.metrics import f1_score
 from sklearn.metrics import classification_report
 from sklearn.metrics import accuracy_score
 
+from joblib import Parallel, delayed
+
 # Global variable to help load data files (PNG-based color tables, etc.)
 neilpy_dir = os.path.dirname(inspect.stack()[0][1])
 
@@ -808,10 +810,12 @@ def read_las(filename):
     header['point_data_offset'] = struct.unpack('<L',data[96:100])[0]
     header['num_variable_records'] = struct.unpack('<L',data[100:104])[0]
     header['point_data_format_id'] = struct.unpack('<B',data[104:105])[0]
+    #print(header['point_data_format_id'])
     laz_format = False
     if header['point_data_format_id'] >= 128 and header['point_data_format_id'] <= 133:
         laz_format = True
-        header['point_data_format_id'] = point_data_format_id - 128
+        # error here?
+        header['point_data_format_id'] =  header['point_data_format_id'] - 128
     if laz_format:
         raise ValueError('LAZ not yet supported.')
     try:
@@ -840,11 +844,14 @@ def read_las(filename):
     # Pare out only the point data
     data = data[header['point_data_offset']:end_point_data]
 
-    if header['point_data_format_id']==1:
+    if header['point_data_format_id']==0:
+        dt = np.dtype([('x', 'i4'), ('y', 'i4'), ('z', 'i4'), ('intensity', 'u2'),
+                       ('return_byte','u1'),('class','u1'),('scan_angle','u1'),
+                       ('user_data','u1'),('point_source_id','u2')])
+    elif header['point_data_format_id']==1:
         dt = np.dtype([('x', 'i4'), ('y', 'i4'), ('z', 'i4'), ('intensity', 'u2'),
                        ('return_byte','u1'),('class','u1'),('scan_angle','u1'),
                        ('user_data','u1'),('point_source_id','u2'),('gpstime','f8')])
-    
     elif header['point_data_format_id']==2:
         dt = np.dtype([('x', 'i4'), ('y', 'i4'), ('z', 'i4'), ('intensity', 'u2'),
                        ('return_byte','u1'),('class','u1'),('scan_angle','u1'),
@@ -2200,3 +2207,17 @@ def score(A,B,k=100000,mask=None):
     
     return result
     
+
+#%%
+
+def shi_landslides(dem,radii,cellsize=1):
+    
+    k, kprof, kplan, ktan, klong, kcross = evans_curvature(dem, cellsize) 
+
+    # NEW
+    result = Parallel(n_jobs=-1)(delayed(rasterGi)(ktan,disk(radius),star=True) for radius in radii)
+    
+    out = np.any(np.array(result)[:,2,:,:] < -2,axis=0)
+    
+    return out
+
