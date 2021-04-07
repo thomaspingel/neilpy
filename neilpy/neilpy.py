@@ -209,7 +209,8 @@ https://www.youtube.com/watch?v=_0Tzo1qbN-A
 
 
 
-def rasterGi(X,footprint=1,mode='nearest',apply_correction=False,star=False):
+def rasterGi(X,footprint=1,mode='nearest',apply_correction=False,star=False,
+             global_mean=None,global_var=None):
 
     # Cast to a float; these operations won't all work on integers
     X = X.astype(np.float)
@@ -249,8 +250,10 @@ def rasterGi(X,footprint=1,mode='nearest',apply_correction=False,star=False):
         global_mean[np.isnan(X)] = np.nan
         global_var[np.isnan(X)] = np.nan        
     else:
-        global_mean = np.nanmean(X) 
-        global_var = np.nanstd(X)**2
+        if global_mean is not None:
+            global_mean = np.nanmean(X)
+        if global_var is not None:
+            global_var = np.nanstd(X)**2
 
     # Within the strucutring element how many neighbors at each point?
     if np.all(np.isfinite(X)):
@@ -2209,6 +2212,8 @@ def score(A,B,k=100000,mask=None):
     
 
 #%%
+
+# This is the "fast" version
 
 def shi_landslides(dem,radii,cellsize=1):
     
