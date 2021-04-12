@@ -1542,6 +1542,8 @@ value to avoid its use entirely.  A second parameter (low_outlier_fill) will
 remove the points from the provisional DTM, and then fill them in before the main
 body of the SMRF algorithm proceeds.  This should aid in preventing the "damage"
 to the DTM that can happen when low outliers are present.
+
+Returns Zpro,t,object_cells,is_object_point.
 '''
 
 def smrf(x,y,z,cellsize=1,windows=18,slope_threshold=.15,elevation_threshold=.5,
@@ -2379,8 +2381,6 @@ def create_raster_network(X):
                                 np.ones(m*(n-1))))
     
     return df
-
-
 
 
 #%%
