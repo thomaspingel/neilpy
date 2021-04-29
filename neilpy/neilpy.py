@@ -2182,3 +2182,30 @@ def shi_landslides(dem,radii,cellsize=1):
     return out
 
 
+#%%
+
+def posprocessor(csv_fn,pos_fn):
+    log = pd.read_csv(csv_fn)
+    log['collection start'] = pd.to_datetime(log['collection start'])
+    log['collection end'] = pd.to_datetime(log['collection end'])
+    
+    df = neilpy.read_pos(pos_fn,return_datetimes=True)
+    alts = []
+    lons = []
+    lats = []
+    names = []
+
+    for i,row in log.iterrows():
+        this_start = row['collection start'].to_datetime64()
+        this_end = row['collection end'].to_datetime64()
+        idx = (df['datetime_utc'] > this_start) & (df['datetime_utc'] < this_end)
+        alts.append(np.median(df.loc[idx,'alt']))
+        lons.append(np.median(df.loc[idx,'lon']))
+        lats.append(np.median(df.loc[idx,'lat']))
+        names.append(row['name'])
+        
+    out_df = pd.DataFrame({'name':names,'lat':lats,'lon':lons,'alt':alts})
+    
+    return out_df
+
+
