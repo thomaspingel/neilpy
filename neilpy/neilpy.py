@@ -1423,7 +1423,7 @@ def write_worldfile(affine_matrix,output_file):
 # This was the first function I wrote to do the calculation, but is actually 
 # fairly unnecessary... get_geomorphone_from_openness has fewer steps (but
 # actually doesn't take that much less time to calculate).
-def get_geomorphons(Z,cellsize=1,lookup_pixels=5,threshold_angle=1,use_negative_openness=True,method='loose',outfile=None,out_transform=None):
+def geomorphons2(Z,cellsize=1,lookup_pixels=5,threshold_angle=1,use_negative_openness=True,method='loose',outfile=None,out_transform=None):
     terrain_code = ternary_pattern_from_openness(Z,cellsize=cellsize, \
                                                  lookup_pixels=lookup_pixels, \
                                                  threshold_angle=threshold_angle, \
@@ -1461,7 +1461,7 @@ def count_openness(Z,cellsize,lookup_pixels,threshold_angle,fast=False,how_fast=
 #%%
 # This is the best go-to function for calcluating a geomorhon from an openness
 # calculation.    
-def get_geomorphon_from_openness(Z,cellsize=1,lookup_pixels=1,threshold_angle=1,enhance=False,fast=False,how_fast=20):
+def geomorphons(Z,cellsize=1,lookup_pixels=1,threshold_angle=1,enhance=False,fast=False,how_fast=20):
 
     
     num_pos, num_neg = count_openness(Z,cellsize,lookup_pixels,threshold_angle,fast,how_fast)
