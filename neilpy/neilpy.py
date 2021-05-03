@@ -775,19 +775,24 @@ def great_circle_distance(slat,slon,elat,elon,radius=6372795):
 
 
 #%% Lidar routines
-"""
-References:
-http://stackoverflow.com/questions/16573089/reading-binary-data-into-pandas
-https://docs.scipy.org/doc/numpy/reference/arrays.dtypes.html
-LAZ http://howardbutler.com/javascript-laz-implementation.html
-http://www.asprs.org/wp-content/uploads/2019/07/LAS_1_4_r15.pdf
-"""
 
-# Reads a file into pandas dataframe
-# Originally developed as research/current/lidar/bonemap
-# A pure python las reader
 def read_las(filename):
-
+    """
+    Reads a LAS (not LAZ, yet!) file into a pandas dataframe.  Written in pure
+    Python.
+    
+    Simple Example:
+    
+    header, df = neilpy.read_las('filename.las')
+ 
+    
+    References:
+    http://stackoverflow.com/questions/16573089/reading-binary-data-into-pandas
+    https://docs.scipy.org/doc/numpy/reference/arrays.dtypes.html
+    http://howardbutler.com/javascript-laz-implementation.html
+    http://www.asprs.org/wp-content/uploads/2019/07/LAS_1_4_r15.pdf 
+                
+    """      
     with open(filename,mode='rb') as file:
         data = file.read()
     
@@ -1724,6 +1729,7 @@ def rmse(X):
 
 #%%
     
+def cutter(x,r,c):
 '''
 Convenience function to split a raster into r and c pieces. 
 Returns a list of lists, in row-column form. 
@@ -1734,12 +1740,13 @@ Example:
     
 See also: "Split Raster" tool in ArcGIS.
 '''
-    
-def cutter(x,r,c):
     return [np.hsplit(i,c) for i in np.vsplit(x,r)]
 
 
 #%%
+
+
+def normalize(X,xrange=['min','max'],yrange=[0,1]):
 '''
 Convenience function to change an array from min/max to 0/1 or a variety
 of other mappings.  Simply specify calculate values to xrange parameter, or 
@@ -1762,8 +1769,6 @@ Examples:
     Zmean = np.nanmean(Z)
     Zn = neilpy.normalize(Z,xrange=[Zmin,Zmean,Zmax],yrange=[-1,0,1])
 '''
-
-def normalize(X,xrange=['min','max'],yrange=[0,1]):
     xrange_fixed = []
     for item in xrange:
         if item=='max':
@@ -2207,3 +2212,32 @@ def posprocessor(survey_df,pos_df):
     return out_df
 
 
+#%%
+# Development work in D:\data\Research\Future\Pycnophylatic Interpolation\tom
+
+def pycno_resample(image,resample=2,window=5,iterations=10):
+'''
+In-development function to resample an image at a higher resolution, using
+Tobler's pycnophylactic reallocation routine to smooth the image.
+
+Simple example:
+    
+    resampled_image = neilpy.pycno_resample(image,resample=2,window=5,iterations=10)
+
+'''   
+    
+    num_pixels = np.size(image)
+    orig_shape = np.shape(image)
+    
+    resampled_image = cv2.resize(q,None,fx=resample,fy=resample,interpolation=cv2.INTER_AREA)
+    pixel_locations = np.reshape(np.arange(num_pixels),np.shape(resampled_image))
+    
+    for j in range(iterations):
+        resampled_image = cv2.blur(resampled_image,(window,window))
+        for i in range(num_pixels):
+            this_mean = np.nanmean(resampled_image[pixel_locations==i])
+            should_mean = image(np.unravel_index(i,orig_shape))
+            scaler = this_mean / should_mean
+            resampled_image[pixel_locations==i] = resampled_image[pixel_locations==i] / scaler
+    
+    return resampled_image
