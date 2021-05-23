@@ -189,6 +189,8 @@ def voxelize(filename,x,y,z,resolution,bottom_fill=True,threshold=1,material=0,v
         Number of points that must be in a voxel to count as filled.
     material : int, optional
        Type of material as given by voxelfuse. The default is 0.
+    ve: float, optional
+       Vertical exaggeration applied to the model.  The default is 1 (no exaggeration).
     
     Returns
     -------
