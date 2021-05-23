@@ -155,8 +155,9 @@ def imwrite(fn,im,metadata=None,colormap=None):
                 bands = np.min(np.shape(im))
                 metadata['count'] = bands
                 for i in range(bands):
-                    sm_dim = np.argsort(np.shape(im))[0]  # smallest dimension; some rasters are 3xmxn, some are mxnx3
-                    if sm_dim==0:
+                    #sm_dim = np.shape(im)[np.argsort(np.shape(im))[0]]  # smallest dimension; some rasters are 3xmxn, some are mxnx3
+                    #if sm_dim==0:
+                    if np.shape(im)[0] == bands:
                         dst.write(im[i,:,:],i+1)
                     else:
                         dst.write(im[:,:,i],i+1)
