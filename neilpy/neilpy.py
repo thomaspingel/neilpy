@@ -189,13 +189,13 @@ def voxelize(filename,x,y,z,resolution,bottom_fill=True,threshold=1,material=0):
         Number of points that must be in a voxel to count as filled.
     material : int, optional
        Type of material as given by voxelfuse. The default is 0.
-
+    
     Returns
     -------
     3D Boolean Array
        This boolean array represents the voxels.
+   '''    
 
-    '''
     min_x, min_y, min_z = np.min(x), np.min(y), np.min(z)
     x = x - min_x
     y = y - min_y
@@ -1811,16 +1811,16 @@ def rmse(X):
 #%%
     
 def cutter(x,r,c):
-'''
-Convenience function to split a raster into r and c pieces. 
-Returns a list of lists, in row-column form. 
-Example:
-    X = tifffile.imread('bigraster.tif')
-    X = cutter(X,3,6)
-    upper_right_piece = X[0][5]
-    
-See also: "Split Raster" tool in ArcGIS.
-'''
+    '''
+    Convenience function to split a raster into r and c pieces. 
+    Returns a list of lists, in row-column form. 
+    Example:
+        X = tifffile.imread('bigraster.tif')
+        X = cutter(X,3,6)
+        upper_right_piece = X[0][5]
+        
+    See also: "Split Raster" tool in ArcGIS.
+    '''
     return [np.hsplit(i,c) for i in np.vsplit(x,r)]
 
 
@@ -1828,28 +1828,28 @@ See also: "Split Raster" tool in ArcGIS.
 
 
 def normalize(X,xrange=['min','max'],yrange=[0,1]):
-'''
-Convenience function to change an array from min/max to 0/1 or a variety
-of other mappings.  Simply specify calculate values to xrange parameter, or 
-use simple keywords like min,max,mean,median.  You can specify more than just
-two endpoints as well, letting you simply specify a piecewise curve re-mapping
-
-Examples:
-    Z, metadata = neilpy.imread('dem.tif')
-    Zn = neilpy.normalize(N)
+    '''
+    Convenience function to change an array from min/max to 0/1 or a variety
+    of other mappings.  Simply specify calculate values to xrange parameter, or 
+    use simple keywords like min,max,mean,median.  You can specify more than just
+    two endpoints as well, letting you simply specify a piecewise curve re-mapping
     
-    or
-    Zn = neilpy.normalize(Z,yrange=[-1,1])
-    
-    or
-    Zn = neilpy.normalize(Z,xrange=['min','mean','max'],yrange=[-1,0,1])
-    
-    or
-    Zmax = np.nanmax(Z)
-    Zmin = np.nanmin(Z)
-    Zmean = np.nanmean(Z)
-    Zn = neilpy.normalize(Z,xrange=[Zmin,Zmean,Zmax],yrange=[-1,0,1])
-'''
+    Examples:
+        Z, metadata = neilpy.imread('dem.tif')
+        Zn = neilpy.normalize(N)
+        
+        or
+        Zn = neilpy.normalize(Z,yrange=[-1,1])
+        
+        or
+        Zn = neilpy.normalize(Z,xrange=['min','mean','max'],yrange=[-1,0,1])
+        
+        or
+        Zmax = np.nanmax(Z)
+        Zmin = np.nanmin(Z)
+        Zmean = np.nanmean(Z)
+        Zn = neilpy.normalize(Z,xrange=[Zmin,Zmean,Zmax],yrange=[-1,0,1])
+    '''
     xrange_fixed = []
     for item in xrange:
         if item=='max':
@@ -2293,32 +2293,3 @@ def posprocessor(survey_df,pos_df):
     return out_df
 
 
-#%%
-# Development work in D:\data\Research\Future\Pycnophylatic Interpolation\tom
-
-def pycno_resample(image,resample=2,window=5,iterations=10):
-'''
-In-development function to resample an image at a higher resolution, using
-Tobler's pycnophylactic reallocation routine to smooth the image.
-
-Simple example:
-    
-    resampled_image = neilpy.pycno_resample(image,resample=2,window=5,iterations=10)
-
-'''   
-    
-    num_pixels = np.size(image)
-    orig_shape = np.shape(image)
-    
-    resampled_image = cv2.resize(q,None,fx=resample,fy=resample,interpolation=cv2.INTER_AREA)
-    pixel_locations = np.reshape(np.arange(num_pixels),np.shape(resampled_image))
-    
-    for j in range(iterations):
-        resampled_image = cv2.blur(resampled_image,(window,window))
-        for i in range(num_pixels):
-            this_mean = np.nanmean(resampled_image[pixel_locations==i])
-            should_mean = image(np.unravel_index(i,orig_shape))
-            scaler = this_mean / should_mean
-            resampled_image[pixel_locations==i] = resampled_image[pixel_locations==i] / scaler
-    
-    return resampled_image
