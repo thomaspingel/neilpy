@@ -169,7 +169,7 @@ def imwrite(fn,im,metadata=None,colormap=None):
 
 #%% Create a Voxel model from a point cloud
 
-def voxelize(filename,x,y,z,resolution,bottom_fill=True,threshold=1,material=0):
+def voxelize(filename,x,y,z,resolution,bottom_fill=True,threshold=1,material=0,ve=1):
     '''
     Parameters
     ----------
@@ -210,7 +210,7 @@ def voxelize(filename,x,y,z,resolution,bottom_fill=True,threshold=1,material=0):
         
     xbins = np.arange(0,np.ceil(max_x)+interval,interval)
     ybins = np.arange(0,np.ceil(max_y)+interval,interval)
-    zbins = np.arange(0,np.ceil(max_z)+interval,interval)
+    zbins = np.arange(0,np.ceil(max_z)+interval/ve,interval/ve)
     
     H, edges = np.histogramdd((x,y,z),bins=(xbins,ybins,zbins))
     H = H >= threshold
