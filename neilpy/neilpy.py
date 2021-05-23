@@ -61,6 +61,10 @@ from sklearn.metrics import accuracy_score
 
 from joblib import Parallel, delayed
 
+from voxelfuse.voxel_model import VoxelModel
+from voxelfuse.mesh import Mesh
+from voxelfuse.primitives import generateMaterials
+
 # import networkx as nx
 #from skimage.graph import MCP_Geometric, MCP
 #from skimage import graph
@@ -163,8 +167,81 @@ def imwrite(fn,im,metadata=None,colormap=None):
                         dst.write(im[:,:,i],i+1)
 
 
-def test_function():
-    print('test successful!')
+#%% Create a Voxel model from a point cloud
+
+def voxelize(filename,x,y,z,resolution,bottom_fill=True,threshold=1,material=0):
+    '''
+    Parameters
+    ----------
+    filename : String
+        Output filename for STL voxel model.  Can be None to avoid writing out.
+    x : float
+        x-values from point cloud array
+    y : float
+        y-values from point cloud array
+    z : float
+        z-values from pont cloud array
+    resolution : int
+        Number of voxels along largest of x or y direction.
+    bottom_fill : boolean, optional
+        Whether hanging bottoms are filled in. The default is True.
+    threshold : int, optional
+        Number of points that must be in a voxel to count as filled.
+    material : int, optional
+       Type of material as given by voxelfuse. The default is 0.
+
+    Returns
+    -------
+    3D Boolean Array
+       This boolean array represents the voxels.
+
+    '''
+    min_x, min_y, min_z = np.min(x), np.min(y), np.min(z)
+    x = x - min_x
+    y = y - min_y
+    z = z - min_z
+    
+    max_x, max_y, max_z = np.max(x), np.max(y), np.max(z)
+    
+    if max_x > max_y:
+        interval = np.ceil(max_x) / (resolution)
+    else:
+        interval = np.ceil(max_y) / (resolution)
+        
+    xbins = np.arange(0,np.ceil(max_x)+interval,interval)
+    ybins = np.arange(0,np.ceil(max_y)+interval,interval)
+    zbins = np.arange(0,np.ceil(max_z)+interval,interval)
+    
+    H, edges = np.histogramdd((x,y,z),bins=(xbins,ybins,zbins))
+    H = H >= threshold
+    
+    def fill_from_bottom(V):
+        def min_nonzero(v):
+            nonzeros = np.nonzero(v)
+            if np.size(nonzeros)==0:
+                return -1
+            else:
+                return np.min(nonzeros)
+
+        idx = np.apply_along_axis(min_nonzero,2,V)
+
+        W = V.copy()
+        for i in range(np.max(idx)):
+            this_layer = V[:,:,i]
+            this_layer[(idx>=0) & (idx>i)] = True
+            W[:,:,i] = this_layer
+
+        return W
+    
+    if bottom_fill:
+        H = fill_from_bottom(H.copy())
+        
+    if filename is not None:
+        model = VoxelModel(H, generateMaterials(material)) 
+        mesh = Mesh.fromVoxelModel(model)
+        mesh.export(filename)
+    
+    return H
 
 #%% Spatial Autocorrelation Functions
 
