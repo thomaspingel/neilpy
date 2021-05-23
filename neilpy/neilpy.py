@@ -163,6 +163,9 @@ def imwrite(fn,im,metadata=None,colormap=None):
                         dst.write(im[:,:,i],i+1)
 
 
+def test_function():
+    print('test successful!')
+
 #%% Spatial Autocorrelation Functions
 
 '''
