@@ -169,7 +169,7 @@ def imwrite(fn,im,metadata=None,colormap=None):
 
 #%% Create a Voxel model from a point cloud
 
-def voxelize(filename,x,y,z,resolution,bottom_fill=True,threshold=1,material=0,ve=1):
+def voxelize(filename,x,y,z,resolution,bottom_fill=True,threshold=1,material=0,ve=1,pad=0):
     '''
     Parameters
     ----------
@@ -237,6 +237,12 @@ def voxelize(filename,x,y,z,resolution,bottom_fill=True,threshold=1,material=0,v
     
     if bottom_fill:
         H = fill_from_bottom(H.copy())
+        
+    if pad > 0:
+        r,c,h = np.shape(H)
+        the_pad = np.ones((r,c,pad),dtype=bool)
+        H = np.dstack((the_pad,H))
+        
         
     if filename is not None:
         model = VoxelModel(H, generateMaterials(material)) 
@@ -1811,9 +1817,7 @@ def rmse(X):
     return np.sqrt(np.nansum(X**2)/np.size(X))
 
 #%%
-    
-def cutter(x,r,c):
-    '''
+'''
     Convenience function to split a raster into r and c pieces. 
     Returns a list of lists, in row-column form. 
     Example:
@@ -1822,15 +1826,14 @@ def cutter(x,r,c):
         upper_right_piece = X[0][5]
         
     See also: "Split Raster" tool in ArcGIS.
-    '''
+'''  
+def cutter(x,r,c):
+
     return [np.hsplit(i,c) for i in np.vsplit(x,r)]
 
 
 #%%
-
-
-def normalize(X,xrange=['min','max'],yrange=[0,1]):
-    '''
+'''
     Convenience function to change an array from min/max to 0/1 or a variety
     of other mappings.  Simply specify calculate values to xrange parameter, or 
     use simple keywords like min,max,mean,median.  You can specify more than just
@@ -1851,7 +1854,10 @@ def normalize(X,xrange=['min','max'],yrange=[0,1]):
         Zmin = np.nanmin(Z)
         Zmean = np.nanmean(Z)
         Zn = neilpy.normalize(Z,xrange=[Zmin,Zmean,Zmax],yrange=[-1,0,1])
-    '''
+'''
+
+def normalize(X,xrange=['min','max'],yrange=[0,1]):
+
     xrange_fixed = []
     for item in xrange:
         if item=='max':
