@@ -61,9 +61,9 @@ from sklearn.metrics import accuracy_score
 
 from joblib import Parallel, delayed
 
-from voxelfuse.voxel_model import VoxelModel
-from voxelfuse.mesh import Mesh
-from voxelfuse.primitives import generateMaterials
+#from voxelfuse.voxel_model import VoxelModel
+#from voxelfuse.mesh import Mesh
+#from voxelfuse.primitives import generateMaterials
 
 # import networkx as nx
 #from skimage.graph import MCP_Geometric, MCP
