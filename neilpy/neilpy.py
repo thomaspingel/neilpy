@@ -61,6 +61,10 @@ from sklearn.metrics import accuracy_score
 
 from joblib import Parallel, delayed
 
+#from voxelfuse.voxel_model import VoxelModel
+#from voxelfuse.mesh import Mesh
+#from voxelfuse.primitives import generateMaterials
+
 # import networkx as nx
 #from skimage.graph import MCP_Geometric, MCP
 #from skimage import graph
@@ -162,6 +166,90 @@ def imwrite(fn,im,metadata=None,colormap=None):
                     else:
                         dst.write(im[:,:,i],i+1)
 
+
+#%% Create a Voxel model from a point cloud
+
+def voxelize(filename,x,y,z,resolution,bottom_fill=True,threshold=1,material=0,ve=1,pad=0):
+    '''
+    Parameters
+    ----------
+    filename : String
+        Output filename for STL voxel model.  Can be None to avoid writing out.
+    x : float
+        x-values from point cloud array
+    y : float
+        y-values from point cloud array
+    z : float
+        z-values from pont cloud array
+    resolution : int
+        Number of voxels along largest of x or y direction.
+    bottom_fill : boolean, optional
+        Whether hanging bottoms are filled in. The default is True.
+    threshold : int, optional
+        Number of points that must be in a voxel to count as filled.
+    material : int, optional
+       Type of material as given by voxelfuse. The default is 0.
+    ve: float, optional
+       Vertical exaggeration applied to the model.  The default is 1 (no exaggeration).
+    
+    Returns
+    -------
+    3D Boolean Array
+       This boolean array represents the voxels.
+   '''    
+
+    min_x, min_y, min_z = np.min(x), np.min(y), np.min(z)
+    x = x - min_x
+    y = y - min_y
+    z = z - min_z
+    
+    max_x, max_y, max_z = np.max(x), np.max(y), np.max(z)
+    
+    if max_x > max_y:
+        interval = np.ceil(max_x) / (resolution)
+    else:
+        interval = np.ceil(max_y) / (resolution)
+        
+    xbins = np.arange(0,np.ceil(max_x)+interval,interval)
+    ybins = np.arange(0,np.ceil(max_y)+interval,interval)
+    zbins = np.arange(0,np.ceil(max_z)+interval/ve,interval/ve)
+    
+    H, edges = np.histogramdd((x,y,z),bins=(xbins,ybins,zbins))
+    H = H >= threshold
+    
+    def fill_from_bottom(V):
+        def min_nonzero(v):
+            nonzeros = np.nonzero(v)
+            if np.size(nonzeros)==0:
+                return -1
+            else:
+                return np.min(nonzeros)
+
+        idx = np.apply_along_axis(min_nonzero,2,V)
+
+        W = V.copy()
+        for i in range(np.max(idx)):
+            this_layer = V[:,:,i]
+            this_layer[(idx>=0) & (idx>i)] = True
+            W[:,:,i] = this_layer
+
+        return W
+    
+    if bottom_fill:
+        H = fill_from_bottom(H.copy())
+        
+    if pad > 0:
+        r,c,h = np.shape(H)
+        the_pad = np.ones((r,c,pad),dtype=bool)
+        H = np.dstack((the_pad,H))
+        
+        
+    if filename is not None:
+        model = VoxelModel(H, generateMaterials(material)) 
+        mesh = Mesh.fromVoxelModel(model)
+        mesh.export(filename)
+    
+    return H
 
 #%% Spatial Autocorrelation Functions
 
@@ -1729,47 +1817,47 @@ def rmse(X):
     return np.sqrt(np.nansum(X**2)/np.size(X))
 
 #%%
-    
+'''
+    Convenience function to split a raster into r and c pieces. 
+    Returns a list of lists, in row-column form. 
+    Example:
+        X = tifffile.imread('bigraster.tif')
+        X = cutter(X,3,6)
+        upper_right_piece = X[0][5]
+        
+    See also: "Split Raster" tool in ArcGIS.
+'''  
 def cutter(x,r,c):
-'''
-Convenience function to split a raster into r and c pieces. 
-Returns a list of lists, in row-column form. 
-Example:
-    X = tifffile.imread('bigraster.tif')
-    X = cutter(X,3,6)
-    upper_right_piece = X[0][5]
-    
-See also: "Split Raster" tool in ArcGIS.
-'''
+
     return [np.hsplit(i,c) for i in np.vsplit(x,r)]
 
 
 #%%
-
+'''
+    Convenience function to change an array from min/max to 0/1 or a variety
+    of other mappings.  Simply specify calculate values to xrange parameter, or 
+    use simple keywords like min,max,mean,median.  You can specify more than just
+    two endpoints as well, letting you simply specify a piecewise curve re-mapping
+    
+    Examples:
+        Z, metadata = neilpy.imread('dem.tif')
+        Zn = neilpy.normalize(N)
+        
+        or
+        Zn = neilpy.normalize(Z,yrange=[-1,1])
+        
+        or
+        Zn = neilpy.normalize(Z,xrange=['min','mean','max'],yrange=[-1,0,1])
+        
+        or
+        Zmax = np.nanmax(Z)
+        Zmin = np.nanmin(Z)
+        Zmean = np.nanmean(Z)
+        Zn = neilpy.normalize(Z,xrange=[Zmin,Zmean,Zmax],yrange=[-1,0,1])
+'''
 
 def normalize(X,xrange=['min','max'],yrange=[0,1]):
-'''
-Convenience function to change an array from min/max to 0/1 or a variety
-of other mappings.  Simply specify calculate values to xrange parameter, or 
-use simple keywords like min,max,mean,median.  You can specify more than just
-two endpoints as well, letting you simply specify a piecewise curve re-mapping
 
-Examples:
-    Z, metadata = neilpy.imread('dem.tif')
-    Zn = neilpy.normalize(N)
-    
-    or
-    Zn = neilpy.normalize(Z,yrange=[-1,1])
-    
-    or
-    Zn = neilpy.normalize(Z,xrange=['min','mean','max'],yrange=[-1,0,1])
-    
-    or
-    Zmax = np.nanmax(Z)
-    Zmin = np.nanmin(Z)
-    Zmean = np.nanmean(Z)
-    Zn = neilpy.normalize(Z,xrange=[Zmin,Zmean,Zmax],yrange=[-1,0,1])
-'''
     xrange_fixed = []
     for item in xrange:
         if item=='max':
@@ -2213,32 +2301,3 @@ def posprocessor(survey_df,pos_df):
     return out_df
 
 
-#%%
-# Development work in D:\data\Research\Future\Pycnophylatic Interpolation\tom
-
-def pycno_resample(image,resample=2,window=5,iterations=10):
-'''
-In-development function to resample an image at a higher resolution, using
-Tobler's pycnophylactic reallocation routine to smooth the image.
-
-Simple example:
-    
-    resampled_image = neilpy.pycno_resample(image,resample=2,window=5,iterations=10)
-
-'''   
-    
-    num_pixels = np.size(image)
-    orig_shape = np.shape(image)
-    
-    resampled_image = cv2.resize(q,None,fx=resample,fy=resample,interpolation=cv2.INTER_AREA)
-    pixel_locations = np.reshape(np.arange(num_pixels),np.shape(resampled_image))
-    
-    for j in range(iterations):
-        resampled_image = cv2.blur(resampled_image,(window,window))
-        for i in range(num_pixels):
-            this_mean = np.nanmean(resampled_image[pixel_locations==i])
-            should_mean = image(np.unravel_index(i,orig_shape))
-            scaler = this_mean / should_mean
-            resampled_image[pixel_locations==i] = resampled_image[pixel_locations==i] / scaler
-    
-    return resampled_image
