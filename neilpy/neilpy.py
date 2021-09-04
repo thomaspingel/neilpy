@@ -308,7 +308,7 @@ def rasterGi(X,footprint=1,mode='nearest',apply_correction=False,star=False,
              global_mean=None,global_var=None):
 
     # Cast to a float; these operations won't all work on integers
-    X = X.astype(np.float)
+    X = X.astype(np.float32)
 
     # If a footprint was provided as a size, assume this is a radius (a change
     # starting in neilpy v.0.17, prior to which is was used directly as the 
@@ -319,7 +319,7 @@ def rasterGi(X,footprint=1,mode='nearest',apply_correction=False,star=False,
     if np.isscalar(footprint):
         m = footprint # This becomes the center pixel
         footprint = 2 * footprint + 1  # now a diameter
-        footprint = np.ones((footprint,footprint),dtype=np.int)
+        footprint = np.ones((footprint,footprint),dtype=int)
         
         # Gi* includes the center value, Gi does not.
         if not star:
@@ -345,17 +345,17 @@ def rasterGi(X,footprint=1,mode='nearest',apply_correction=False,star=False,
         global_mean[np.isnan(X)] = np.nan
         global_var[np.isnan(X)] = np.nan        
     else:
-        if global_mean is not None:
+        if global_mean is None:
             global_mean = np.nanmean(X)
-        if global_var is not None:
+        if global_var is None:
             global_var = np.nanstd(X)**2
 
     # Within the strucutring element how many neighbors at each point?
     if np.all(np.isfinite(X)):
-        w_neighbors = np.sum(footprint) * np.ones(np.shape(X),dtype=np.int)
+        w_neighbors = np.sum(footprint) * np.ones(np.shape(X),dtype=np.int32)
     else:
-        w_neighbors = ndi.filters.generic_filter(np.isfinite(X).astype(np.int),np.sum,footprint=footprint,mode=mode)
-        w_neighbors = w_neighbors.astype(np.float)
+        w_neighbors = ndi.filters.generic_filter(np.isfinite(X).astype(np.int32),np.sum,footprint=footprint,mode=mode)
+        w_neighbors = w_neighbors.astype(np.float32)
         w_neighbors[np.isnan(X)] = np.nan
 
     # Calculate the numerator of Gi using a generic filter
@@ -383,7 +383,7 @@ def rasterGi(X,footprint=1,mode='nearest',apply_correction=False,star=False,
     #c = stats.norm.ppf(.995)
     
     # Create an ArcGIS-like Gi_Bin indicating CIs (90/95/99) for above-and-below
-    sig_bin = np.zeros_like(X,dtype=np.float)
+    sig_bin = np.zeros_like(X,dtype=np.float32)
     np.seterr(divide='ignore', invalid='ignore')
     sig_bin[P<.1] = 1
     sig_bin[P<.05] = 2
