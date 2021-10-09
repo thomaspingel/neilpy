@@ -1968,9 +1968,9 @@ def topographic_position_index(X,radius=1,standardize=True):
 # Takes a filename, returns a geodataframe
 # https://community.emlid.com/t/reach-llh-protocol-format/1354/4
 
-def read_llh(fn,return_datetimes=True,skiprows=0):
+def read_llh(fn,return_datetimes=True,skiprows=0,comment="%"):
     
-    df = pd.read_csv(fn,header=None,delim_whitespace=True,skiprows=skiprows)
+    df = pd.read_csv(fn,header=None,delim_whitespace=True,skiprows=skiprows,comment="%")
     
     df = df.rename({0:'date_gps',1:'time_gps',2:'lat',3:'lon',4:'alt',5:'Q',
                     6:'num_sat',7:'sdn',8:'sde',9:'sdu',10:'sdne',11:'sdeu',
@@ -1992,7 +1992,7 @@ def read_llh(fn,return_datetimes=True,skiprows=0):
 
 #%%
 def read_pos(fn,return_datetimes=True):
-    df = read_llh(fn,return_datetimes,skiprows=11)
+    df = read_llh(fn,return_datetimes,comment="%")
     return df
 
 #%%
