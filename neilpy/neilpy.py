@@ -74,7 +74,16 @@ from joblib import Parallel, delayed
 # Global variable to help load data files (PNG-based color tables, etc.)
 neilpy_dir = os.path.dirname(inspect.stack()[0][1])
 
+#%%
 
+def keep_xyz(df,x=None,y=None,z=None):
+    if x is not None:
+        df = df[(df.x >= x[0]) & (df.x <= x[1])]
+    if y is not None:
+        df = df[(df.y >= y[0]) & (df.y <= y[1])]
+    if z is not None:
+        df = df[(df.z >= z[0]) & (df.z <= z[1])]
+    return df
 
 #%% Coordinate transformation
 
