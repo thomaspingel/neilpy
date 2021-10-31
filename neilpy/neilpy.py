@@ -2122,6 +2122,120 @@ def fix_gopro_bad_time_resolution(series):
     
     return value
 
+# A better version?
+def fix_gopro_bad_time_resolution2(series,gpstimeoffset):
+    df = pd.DataFrame(series)
+    df = df.rename({df.columns.values[0]:'key'},axis=1)
+    df['counts'] = 0
+    group = df.groupby('key') 
+    datetime_counts = pd.DataFrame(group.count()).iloc[:,0].reset_index() 
+    df.drop('counts',axis=1,inplace=True)
+    #datetime_counts['count'] = datetime_counts.iloc[:,-1]
+    #datetime_counts.drop(1,axis=1,inplace=True)    
+    #datetime_counts = df.rename(columns={ df.columns[0]: "count" })
+    # datetime_counts = datetime_counts.rename({'datetime_gps':'count'},axis=1)
+    df = df.merge(datetime_counts,how='left',on='key')
+    
+    df['increment'] = 1  
+    df['add_to'] = 0
+    
+    last_time = -1
+    increment = 1
+    for i in range(len(df)):
+        this_time = df.loc[i,'key']
+        if this_time != last_time:
+            increment = 1
+        else:
+            increment = increment + 1
+        df.loc[i,'increment'] = increment      
+        last_time = this_time
+    
+    #idx = (df['counts']>=2) & (df['increment']==2)
+    #df.loc[idx,'add_to'] = .5
+    #idx = (df['counts']==1) & (df['increment']==1)
+    #df.loc[idx,'add_to'] = .5
+    #idx = (df['counts']==3) & (df['increment']==3)
+    #df.loc[idx,'add_to'] = 1
+    
+    df['add_to'] = (df.increment / df.counts) - (1 / (2 * df.counts))
+        
+    value = df['key'] + pd.to_timedelta(gpstimeoffset + df['add_to'], unit='seconds')
+    
+    return value
+
+
+#%%
+
+def ppk_images(rtk_log,image_dir,out_file=None,time_delta=0,gps_height=0,camera_pitch=None,gopro=False,gpstimeoffset=18,h_acc=0,v_acc=0):
+    
+    # Load RTK/PPK logs, and photo info into a dataframe
+    if rtk_log.endswith('llh'):
+        rtk_df = read_llh(rtk_log,return_datetimes=True)
+    else:
+        rtk_df = read_llh(rtk_log,return_datetimes=True)
+    photos_df = read_geotags_into_df(fns,return_datetimes=True)
+
+    # simplify filename, exlcude path
+    photos_df['fn'] = photos_df['fn'].apply(os.path.basename)
+
+    # Fix GoPro time resolution and offset issues.  GoPro "floors" the GPS time
+    # and also is actually UTC time.
+    if gopro == True:
+        photos_df['datetime_gps_fixed'] = fix_gopro_bad_time_resolution2(photos_df['datetime_gps'],gpstimeoffset)
+    else:
+        photos_df['datetime_gps_fixed'] = photos_df['datetime_gps']
+
+    # If there is an offset to be applied, do so.  This may now be rare?
+    photos_df['datetime_gps_fixed'] = photos_df['datetime_gps_fixed'] + datetime.timedelta(seconds=time_delta)
+
+    # Iterpolate latitude, longitude, and heights.  Linear interpolator.
+    photos_df['new_lat'] = np.interp(photos_df['datetime_gps_fixed'],rtk_df['datetime_gps'],rtk_df['lat'])
+    photos_df['new_lon'] = np.interp(photos_df['datetime_gps_fixed'],rtk_df['datetime_gps'],rtk_df['lon'])
+    photos_df['new_alt'] = np.interp(photos_df['datetime_gps_fixed'],rtk_df['datetime_gps'],rtk_df['alt'])
+    
+    
+    if h_acc == 0:
+        # h_acc is the maximum of e or n.  v_acc is sdu.  10x multiplier because
+        # these values seem off to me.
+        photos_df['h_acc'] = 10*np.interp(photos_df['datetime_gps_fixed'],rtk_df['datetime_gps'],np.max(rtk_df.loc[:,['sde','sdn']],axis=1))
+        photos_df['h_acc'] = np.round(photos_df['h_acc'],decimals=3)
+    else:
+        photos_df['h_acc'] = h_acc
+    if v_acc == 0:
+        photos_df['v_acc'] = 10*np.interp(photos_df['datetime_gps_fixed'],rtk_df['datetime_gps'],rtk_df['sdu'])
+        photos_df['v_acc'] = np.round(photos_df['v_acc'],decimals=3)
+    else:
+        photos_df['v_acc'] = v_acc
+        
+    photos_df['new_alt'] = photos_df['new_alt'] - gps_height
+    
+    if camera_pitch is not None:
+    
+        # Calculate yaw, pitch, roll
+        photos_df['yaw'] = track2azimuth(photos_df.new_lat.values, photos_df.new_lon.values)
+    
+        photos_df['pitch'] = camera_pitch
+    
+        # Calculate omega, phi, kappa
+        o,p,k = ypr2opk(photos_df.yaw, photos_df.pitch)
+        photos_df['omega'] = np.round(o,decimals=2)
+        photos_df['phi'] = np.round(p,decimals=2)
+        photos_df['kappa'] = np.round(k,decimals=2)
+    
+    else:
+        photos_df['omega'] = 0
+        photos_df['phi'] = 0
+        photos_df['kappa'] = 0  
+        
+    photos_df2 = photos_df.loc[:,['fn','new_lat','new_lon','new_alt','omega','phi','kappa','h_acc','v_acc']]
+    photos_df2 = photos_df2.rename(columns={'new_lat':'lat','new_lon':'lon','new_alt':'alt'})
+
+    if out_file is not None:
+        photos_df2.to_csv(out_file,index=False)
+    
+    #if out_file is None:
+    return photos_df2
+
 
 #%%
 # https://pythonhealthcare.org/2018/04/15/64-numpy-setting-width-and-number-of-decimal-places-in-numpy-print-output/
@@ -2287,7 +2401,7 @@ def shi_landslides(dem,radii,cellsize=1):
 
 #%%
 
-def posprocessor(survey_df,pos_df):
+def posprocessor(survey_df,pos_df,keep_Q=[1,2,5]):
     survey_df['collection start'] = pd.to_datetime(survey_df['collection start'])
     survey_df['collection end'] = pd.to_datetime(survey_df['collection end'])
     
@@ -2299,7 +2413,7 @@ def posprocessor(survey_df,pos_df):
     for i,row in survey_df.iterrows():
         this_start = row['collection start'].to_datetime64()
         this_end = row['collection end'].to_datetime64()
-        idx = (pos_df['datetime_utc'] > this_start) & (pos_df['datetime_utc'] < this_end)
+        idx = (pos_df['datetime_utc'] > this_start) & (pos_df['datetime_utc'] < this_end) & (pos_df['Q'].isin(keep_Q))
         alts.append(np.median(pos_df.loc[idx,'alt']))
         lons.append(np.median(pos_df.loc[idx,'lon']))
         lats.append(np.median(pos_df.loc[idx,'lat']))
