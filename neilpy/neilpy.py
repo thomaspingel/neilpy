@@ -61,6 +61,8 @@ from sklearn.metrics import accuracy_score
 
 from joblib import Parallel, delayed
 
+import glob
+
 #from voxelfuse.voxel_model import VoxelModel
 #from voxelfuse.mesh import Mesh
 #from voxelfuse.primitives import generateMaterials
@@ -2166,7 +2168,9 @@ def fix_gopro_bad_time_resolution2(series,gpstimeoffset):
 
 #%%
 
-def ppk_images(rtk_log,image_dir,out_file=None,time_delta=0,gps_height=0,camera_pitch=None,gopro=False,gpstimeoffset=18,h_acc=0,v_acc=0):
+def ppk_images(rtk_log,image_paths,out_file=None,time_delta=0,gps_height=0,camera_pitch=None,gopro=False,gpstimeoffset=18,h_acc=0,v_acc=0):
+    
+    fns = glob.glob(image_paths)
     
     # Load RTK/PPK logs, and photo info into a dataframe
     if rtk_log.endswith('llh'):
