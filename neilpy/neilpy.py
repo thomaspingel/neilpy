@@ -1648,7 +1648,7 @@ remove the points from the provisional DTM, and then fill them in before the mai
 body of the SMRF algorithm proceeds.  This should aid in preventing the "damage"
 to the DTM that can happen when low outliers are present.
 
-Returns Zpro,t,object_cells,is_object_point.
+Returns Zpro,t,object_cells,is_object_point,elevation_values.
 '''
 
 def smrf(x,y,z,cellsize=1,windows=18,slope_threshold=.15,elevation_threshold=.5,
