@@ -1714,7 +1714,7 @@ def smrf(x,y,z,cellsize=1,windows=18,slope_threshold=.15,elevation_threshold=.5,
     
     # Return the provisional surface, affine matrix, raster object cells
     # and boolean vector identifying object points from point cloud
-    return Zpro,t,object_cells,is_object_point
+    return Zpro,t,object_cells,is_object_point,elevation_values
 
 
 #%%
