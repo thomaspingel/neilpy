@@ -2405,9 +2405,9 @@ def shi_landslides(dem,radii,cellsize=1):
 
 #%%
 
-def posprocessor(survey_df,pos_df,keep_Q=[1,2,5]):
-    survey_df['collection start'] = pd.to_datetime(survey_df['collection start'])
-    survey_df['collection end'] = pd.to_datetime(survey_df['collection end'])
+def posprocessor(survey_df,pos_df,keep_Q=[1,2,5],start_field='collection start',end_field='collection end'):
+    survey_df[start_field] = pd.to_datetime(survey_df[start_field])
+    survey_df[end_field] = pd.to_datetime(survey_df[end_field])
     
     alts = []
     lons = []
@@ -2415,8 +2415,8 @@ def posprocessor(survey_df,pos_df,keep_Q=[1,2,5]):
     names = []
 
     for i,row in survey_df.iterrows():
-        this_start = row['collection start'].to_datetime64()
-        this_end = row['collection end'].to_datetime64()
+        this_start = row[start_field].to_datetime64()
+        this_end = row[end_field].to_datetime64()
         idx = (pos_df['datetime_utc'] > this_start) & (pos_df['datetime_utc'] < this_end) & (pos_df['Q'].isin(keep_Q))
         alts.append(np.median(pos_df.loc[idx,'alt']))
         lons.append(np.median(pos_df.loc[idx,'lon']))
