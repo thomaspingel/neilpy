@@ -2406,6 +2406,11 @@ def shi_landslides(dem,radii,cellsize=1):
 #%%
 
 def posprocessor(survey_df,pos_df,keep_Q=[1,2,5],start_field='collection start',end_field='collection end'):
+    
+    survey_df.columns = [str.lower(n) for n in survey_df.columns.values]
+    start_field = str.lower(start_field)
+    end_field = str.lower(end_field)
+    
     survey_df[start_field] = pd.to_datetime(survey_df[start_field])
     survey_df[end_field] = pd.to_datetime(survey_df[end_field])
     
