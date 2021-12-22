@@ -1939,6 +1939,39 @@ def brassel_atmospheric_perspective(H,Z,k,flat=180,Zmid=None,reverse=False,C2=0)
     
     return H_new
 
+
+#%%
+
+def reduce_peaks(Z,radius,blend_rate=2,kernel_rate='auto'):
+
+    # A higher value on blend_rate will tend to draw more from the original
+    
+    if kernel_rate=='auto':
+        kernel_rate = 1/blend_rate
+    
+    
+    strel = distance_kernel(radius,method='distance')
+    strel = 1 - (strel / np.max(strel))
+    strel = strel**kernel_rate
+    # inspect the kernel:
+    # plt.plot(strel[int(radius/2)+1,:])
+    
+    #M = ndi.filters.generic_filter(I,np.nanmean,footprint=strel)
+    M = ndi.convolve(Z,strel/np.sum(strel),mode='nearest')
+    
+    #STD = ndi.filters.generic_filter(I,np.nanstd,footprint=strel)
+    # Should check this equation
+    STD = ndi.convolve((M - Z)**2,strel/np.sum(strel),mode='nearest')**.5
+    
+    # The higher this value, the more it'll draw from the original
+    V = (1-normalize(STD))**blend_rate
+    
+    
+    MIX = (1-V)*M + (V)*Z
+    
+    return MIX
+
+
 #%%
 
 '''
