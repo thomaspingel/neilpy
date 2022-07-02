@@ -1064,11 +1064,26 @@ def read_las(filename):
 
 #%%
 
+# Given an image and accompanying affine transform, return the x_edges and
+# y_edges for the image.  This is useful when passing specific edges to 
+# the create_dem function.
+
+def edges_from_IT(Image,Transform):
+    r,c = np.shape(Image)[0],np.shape(Image)[1]
+    x_edges = np.arange(c+1)
+    y_edges = np.arange(r+1)
+    x_edges, _ = Transform * np.array(list(zip(x_edges,np.zeros_like(x_edges)))).T
+    _, y_edges = Transform * np.array(list(zip(np.zeros_like(y_edges),y_edges))).T
+    
+    return x_edges, y_edges
+
+
+#%%
 # Using scipy's binned statistic would be preferable here, but it doesn't do
 # min/max natively, and is too slow when not cython.
 # It would look like: 
 # Z,xi,yi,binnum = stats.binned_statistic_2d(x,y,z,statistic='min',bins=(x_edge,y_edge))
-def create_dem(x,y,z,cellsize=1,bin_type='max',use_binned_statistic=False,inpaint=False):
+def create_dem(x,y,z,cellsize=1,bin_type='max',inpaint=False,edges=None,use_binned_statistic=False):
     
     #x = df.x.values
     #y = df.y.values
@@ -1078,11 +1093,20 @@ def create_dem(x,y,z,cellsize=1,bin_type='max',use_binned_statistic=False,inpain
     floor2 = lambda x,v: v*np.floor(x/v)
     ceil2 = lambda x,v: v*np.ceil(x/v)
     
-    
-    xedges = np.arange(floor2(np.min(x),cellsize)-.5*cellsize,
-                       ceil2(np.max(x),cellsize) + 1.5*cellsize,cellsize)
-    yedges = np.arange(ceil2(np.max(y),cellsize)+.5*cellsize,
-                       floor2(np.min(y),cellsize) - 1.5*cellsize,-cellsize)
+    if edges is None:
+        xedges = np.arange(floor2(np.min(x),cellsize)-.5*cellsize,
+                           ceil2(np.max(x),cellsize) + 1.5*cellsize,cellsize)
+        yedges = np.arange(ceil2(np.max(y),cellsize)+.5*cellsize,
+                           floor2(np.min(y),cellsize) - 1.5*cellsize,-cellsize)
+    else:
+        xedges = edges[0]
+        yedges = edges[1]
+        out_of_range = (x < xedges[0]) | (x > xedges[-1]) | (y > yedges[0]) | (y < yedges[-1])
+        x = x[~out_of_range]
+        y = y[~out_of_range]
+        z = z[~out_of_range]
+        cellsize = np.abs(xedges[1]-xedges[0])
+        
     nx, ny = len(xedges)-1,len(yedges)-1
     
     I = np.empty(nx*ny)
