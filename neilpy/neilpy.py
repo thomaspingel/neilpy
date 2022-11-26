@@ -156,23 +156,29 @@ def imread(fn, return_metadata=True, fix_nodata=False, force_float=False):
 
 # TODO: verify multi-layer write and colormap write
 
-def imwrite(fn,im,metadata=None,colormap=None):
+def imwrite(fn,im,metadata=None,colormap=None,overwrite_metadata=True):
     if metadata is None:
         imageio.imwrite(fn,im)
     else:
-        metadata['dtype'] = im.dtype
+        if overwrite_metadata:
+            metadata['dtype'] = im.dtype  # Overwrite
+            if 'width' not in metadata.keys():
+                metadata['width'] = np.shape(im)[1]
+            if 'height' not in metadata.keys():
+                metadata['height'] = np.shape(im)[0]
+            metadata['count'] = 1
+            if np.ndim(im)>2:
+                bands = np.min(np.shape(im))
+                metadata['count'] = bands
+        # Write
         with rasterio.open(fn, 'w', **metadata) as dst:
-            if np.ndim(im)==2:
+            if metadata['count']==1:
                 dst.write(im, 1)
                 if colormap is not None:
                     dst.write_colormap(1,colormap)
             else:
-                bands = np.min(np.shape(im))
-                metadata['count'] = bands
-                for i in range(bands):
-                    #sm_dim = np.shape(im)[np.argsort(np.shape(im))[0]]  # smallest dimension; some rasters are 3xmxn, some are mxnx3
-                    #if sm_dim==0:
-                    if np.shape(im)[0] == bands:
+                for i in range(metadata['count']):
+                    if np.shape(im)[0] == metadata['count']:
                         dst.write(im[i,:,:],i+1)
                     else:
                         dst.write(im[:,:,i],i+1)
