@@ -831,16 +831,28 @@ def multiple_illumination(Z,cellsize=1,z_factor=1,zeniths=np.array([45]),azimuth
 
 # Calculates a Perceptually Scaled Slope Map (PSSM) of the input DEM, and 
 # returns a bone shaded colormapped raster.
-def pssm(Z,cellsize=1,ve=2.3,reverse=False):
-    P = slope(Z,cellsize=cellsize,return_as='percent')
-    P = np.rad2deg(np.arctan(ve *  P))
-    P = (P - P.min()) / (P.max() - P.min())
+def pssm(Z,cellsize=1,ve=2.3,reverse=False,apply_colormap=True):
+
+    # Calculate Slope
+    gy,gx = np.gradient(Z,cellsize)
+    S = np.sqrt(gx**2 + gy**2)
+    del gy,gx
+
+    # Apply vertical exaggeration, convert to degrees, divide by 90
+    P = np.rad2deg(np.arctan(ve *  S)) / 90
+    del S
+    
+    # Convert to integer scaled 0-255
     P = np.round(255*P).astype(np.uint8)
-    if reverse==False:
-        P = plt.cm.bone_r(P)
+    
+    if apply_colormap:
+        if reverse==False:
+            P = plt.cm.bone_r(P)
+        else:
+            P = plt.cm.bone(P)
+        return P
     else:
-        P = plt.cm.bone(P)
-    return P
+        return P
 
 # A simple function to calculate a z-factor based on an input latitude to 
 # calculate slopes, etc., on a degree-referenced DEM (e.g., 1 arc second)
