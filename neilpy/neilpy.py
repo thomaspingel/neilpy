@@ -41,6 +41,7 @@ from scipy import interpolate
 from PIL import Image
 from skimage.util import apply_parallel
 from skimage.morphology import disk
+from skimage.morphology import opening
 #import cv2
 import imageio
 
@@ -1650,52 +1651,85 @@ def geomorphons(Z,cellsize=1,lookup_pixels=1,threshold_angle=1,enhance=False,fas
 
 #%% The Simple Morphological Filter
 
-def progressive_filter(Z,windows,cellsize=1,slope_threshold=.15):
+def progressive_filter(Z,windows,cellsize=1,slope_threshold=.15,return_when_dropped=False):
     last_surface = Z.copy()
     elevation_thresholds = slope_threshold * (windows * cellsize)  
-    is_object_cell = np.zeros(np.shape(Z),dtype=np.bool)
+    is_object_cell = np.zeros(np.shape(Z),dtype=bool)
+    if return_when_dropped:
+        when_dropped = np.zeros(np.shape(Z),dtype=np.uint8)
     for i,window in enumerate(windows):
         elevation_threshold = elevation_thresholds[i]
         this_disk = disk(window)
         if window==1:
             this_disk = np.ones((3,3),dtype=np.uint8)
-        this_surface = ndi.morphology.grey_opening(last_surface,footprint=disk(window)) 
-        is_object_cell = (is_object_cell) | (last_surface - this_surface > elevation_threshold)
+        this_surface = opening(last_surface,disk(window)) 
+        new_obj = last_surface - this_surface > elevation_threshold
+        is_object_cell = (is_object_cell) | (new_obj)
+        if return_when_dropped:
+            when_dropped[new_obj] = i
         if i < len(windows) and len(windows)>1:
             last_surface = this_surface.copy()
-    return is_object_cell
+    if return_when_dropped:
+        return is_object_cell,when_dropped
+    else:
+        return is_object_cell
 
 
 #%%
 
-'''
-x,y,z are points in space (e.g., lidar points)
-
-windows is a scalar value specifying the maximum radius in pixels.  One can also 
-supply an array of specific radii to test.  Very often, increasing the radius by 
-one each time (as is the default) is unnecessary, especially for EDA.
-
-Final classification of points is done using elevation_threshold and elevation_scaler.
-points are compared against the provisional surface with a threshold modulated by the 
-scaler value.  However, often the provisional surface (itself interpolated) works
-quite well.  
-
-Two additional parameters are being test to assist in low outlier removal.
-low_filter_slope provides a slope value for an inverted surface.  Its default
-value is 5 (meaning 500% slope).  However, we have noticed that in very rugged 
-and forested terrain, that an even larger value may be necessary.  Alternatively,
-low noise can be scrubbed using other means, and then this value can be set to a very high 
-value to avoid its use entirely.  A second parameter (low_outlier_fill) will 
-remove the points from the provisional DTM, and then fill them in before the main
-body of the SMRF algorithm proceeds.  This should aid in preventing the "damage"
-to the DTM that can happen when low outliers are present.
-
-Returns Zpro,t,object_cells,is_object_point,elevation_values.
-'''
-
-def smrf(x,y,z,cellsize=1,windows=18,slope_threshold=.15,elevation_threshold=.5,
-         elevation_scaler=1.25,low_filter_slope=5,low_outlier_fill=False):
-
+def smrf(x,y,z,cellsize=1,windows=5,slope_threshold=.15,elevation_threshold=.5,
+         elevation_scaler=1.25,low_filter_slope=5,low_outlier_fill=False,
+         return_extras=False):
+    """
+    Simple Example:
+    
+    import smrf
+    
+    dtm, T, obj_grid, obj_vector = smrf.smrf(x,y,z,cellsize=1,windows=5,slope_threshold=.15)
+    
+    Parameters:
+    - x,y,z are points in space (e.g., lidar points)
+    - 'windows' is a scalar value specifying the maximum radius in pixels.  One can also 
+                supply an array of specific radii to test.  Very often, increasing the 
+                radius by one each time (as is the default) is unnecessary, especially 
+                for EDA.  This is the most sensitive parameter.  Use a small value 
+                (2-5 m) when removing small objects like trees.  Use a larger value (5-50)
+                to remove larger objects like buildings.  Use the smallest value you
+                can to avoid misclassifying true ground points as objects.  A
+                small radius (5 pixels) and evaluating output is generally a good starting
+                point.
+    - 'slope_threshold' is a dz/dx value that controls the ground/object classification.
+                A value of .15 to .2 is generally a good starting point.  Use a higher 
+                value in steeper terrain to avoid misclassifying true ground points as
+                objects.  Note, .15 equals a 15 percent (not degree!) slope.
+    - 'elevation_threshold' is a value that controls final classification of object/ground
+                and is specified in map units (e.g., meters or feet).  Any value within 
+                this distance of the provisional DTM is considered a ground point.  A 
+                value of .5 meters is generally a good starting point.
+    - 'elevation_scaler' - allows elevation_threshold to increase on steeper slopes.
+                The product of this and a slope surface are added to the elevation_threshold
+                for each grid cell.  Set this value to zero to not use this paramater.
+                A value of 1.25 is generally a good starting point.
+    - 'low_filter_slope' controls the identification of low outliers.  Since SMRF builds
+                its provisional DTM from the lowest point in a grid cell, low outliers can
+                greatly affect algorithm performance.  The default value of 5 (corresponding
+                to 500%) is a good starting point, but if your data has significant low outliers, 
+                use a significantly higher value (50, 500) to remove these.
+    - 'low_outlier_fill' removes and re-interpolates low outlier grid cells.  The default value
+                is false, as most of the time the standard removal process works fine.
+    - 'return_extras' allows the return of a dictionary of extra vectors about your data
+                
+                
+    Returns: dtm, transform, object_grid, object_vector
+        
+    - 'dtm' is a provisional ground surface created after processing.
+    - 'T' is a rasterio Affine transformation vector for writing out the DTM using rasterio
+    - 'obj_grid' is a boolean grid of the same size as DTM where 0s mark ground and 1s mark objects.
+    - 'obj_vector' is a boolean vector/1D-array of the same size as x,y, and z, where 0s mark 
+                ground and 1s mark objects.
+    - 'extras' is a dictionary that contains above_ground_height, drop_raster, and when_dropped
+                
+    """         
     if np.isscalar(windows):
         windows = np.arange(windows) + 1
     
@@ -1710,7 +1744,10 @@ def smrf(x,y,z,cellsize=1,windows=18,slope_threshold=.15,elevation_threshold=.5,
         Zmin = inpaint_nans_by_springs(Zmin)
     
     # This is the main crux of the algorithm
-    object_cells = progressive_filter(Zmin,windows,cellsize,slope_threshold);
+    if return_extras:
+        object_cells,drop_raster = progressive_filter(Zmin,windows,cellsize,slope_threshold,return_when_dropped=True)
+    else:
+        object_cells = progressive_filter(Zmin,windows,cellsize,slope_threshold)
     
     # Create a provisional surface
     Zpro = Zmin
@@ -1722,22 +1759,20 @@ def smrf(x,y,z,cellsize=1,windows=18,slope_threshold=.15,elevation_threshold=.5,
     Zpro = inpaint_nans_by_springs(Zpro)
     
     # Use provisional surface to interpolate a height at each x,y point in the
-    # point cloud.  This uses a linear interpolator, where the original SMRF
-    # used a splined cubic interpolator.  Perhaps use RectBivariateSpline instead.
+    # point cloud.  The original SMRF used a splined cubic interpolator. 
     col_centers = np.arange(0.5,Zpro.shape[1]+.5)
     row_centers = np.arange(0.5,Zpro.shape[0]+.5)
-    
-    # Regular Grid Interpolator, keep here for a reference for a short time
-    # Example syntax: x,y = t * (col,row)
-#    xi, _ = t * (col_centers, np.zeros(np.shape(col_centers)))
-#    _, yi = t * (np.zeros(np.shape(row_centers)), row_centers)
-#    f1 = interpolate.RegularGridInterpolator((yi[::-1],xi),np.flipud(Zpro))
-#    elevation_values = f1((y,x))
-    
+
     # RectBivariateSpline Interpolator
     c,r = ~t * (x,y)
     f1 = interpolate.RectBivariateSpline(row_centers,col_centers,Zpro)
     elevation_values = f1.ev(r,c)
+    
+    # Drop values, if requested
+    if return_extras:
+        #f3 = interpolate.NearestNDInterpolator((row_centers,col_centers),drop_raster)
+        #when_dropped = f3(r,c)
+        when_dropped = drop_raster[np.round(r).astype(int),np.round(c).astype(int)]
     
     # Calculate a slope value for each point.  This is used to apply a some "slop"
     # to the ground/object ID, since there is more uncertainty on slopes than on
@@ -1754,9 +1789,18 @@ def smrf(x,y,z,cellsize=1,windows=18,slope_threshold=.15,elevation_threshold=.5,
     required_value = elevation_threshold + (elevation_scaler * slope_values)
     is_object_point = np.abs(elevation_values - z) > required_value
     
-    # Return the provisional surface, affine matrix, raster object cells
-    # and boolean vector identifying object points from point cloud
-    return Zpro,t,object_cells,is_object_point,elevation_values
+    if return_extras==True:
+        extras={}
+        extras['above_ground_height'] = z-elevation_values
+        extras['drop_raster'] = drop_raster
+        extras['when_dropped'] = when_dropped # as a point
+    
+    if return_extras==False:  
+        # Return the provisional surface, affine matrix, raster object cells
+        # and boolean vector identifying object points from point cloud
+        return Zpro,t,object_cells,is_object_point
+    else:
+        return Zpro,t,object_cells,is_object_point,extras
 
 
 #%%
