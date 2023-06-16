@@ -64,6 +64,11 @@ from joblib import Parallel, delayed
 
 import glob
 
+from sklearn.neighbors import NearestNeighbors
+
+from scipy.optimize import linear_sum_assignment
+from scipy.spatial.distance import cdist
+
 #from voxelfuse.voxel_model import VoxelModel
 #from voxelfuse.mesh import Mesh
 #from voxelfuse.primitives import generateMaterials
@@ -2551,4 +2556,164 @@ def posprocessor(survey_df,pos_df,keep_Q=[1,2,5],start_field='collection start',
     
     return out_df
 
+#%% Bidimensinoal Regression
 
+# Bidimensional Regression: A Python Implementation by Thomas J. Pingel
+#
+# This Python function is a coding of Friedman and Kohler's 
+# (2003) Euclidean bidimensional regression solution.  It was based on an 
+# earlier Matlab implementation I did, now on GitHub at 
+# https://github.com/thomaspingel/bidimensional-regression-matlab
+#
+# References: 
+# Friedman, A., & Kohler, B. (2003). Bidimensional Regression: Assessing
+#   the Configural Similarity and Accuracy of Cognitive Maps and Other Two-Dimensional 
+#   Data Sets. Psychological Methods, 8(4), 468-491.
+#   https://doi.org/10.1037/1082-989X.8.4.468
+#   http://www.psych.ualberta.ca/~alinda/PDFs/Friedman%20Kohler%20%5B03-Psych%20Methods%5D.pdf
+#
+# Nakaya, T. (1997). Statistical inferences in bidimensional regression
+#   models. Geographical Analysis, 29, 169-186.
+#   https://doi.org/10.1111/j.1538-4632.1997.tb00954.x
+#   
+#
+# Tobler, W. (1994). Bidimensional Regression. Geographical Analysis, 26, 187-212.
+#   https://doi.org/10.1111/j.1538-4632.1994.tb00320.x 
+#
+# This code copyrighted June 14, 2023.
+#
+# Free for use, but please cite if used for data prepared for publication.
+# Thomas. J Pingel
+# Department of Geography, Binghamton University
+# tpingel@binghamton.edu
+# The output is a structure containing the parameters of the regression and distortion.  These are:
+#
+# n -           Number of points used in the analysis 
+# beta1 -       Regression parameter
+# beta2 -       Regression parameter
+# alpha1 -      Translation dispacement for X
+# alpha2 -      Translation displacement for Y
+# scale (phi) - A value greater than one means dependent is larger (expansion), 
+#               a value smaller than one indicates dependent coordinates are 
+#               smaller (contraction).
+# theta -       A measure of angular displacement.  Negative indicates a
+#               clockwise rotation is necessary.
+# aPrime -      Predicted X coordinates
+# bPrime -      Predicted Y coordinates
+# rsquare -     Overall amount of variance explained by regression
+# D -           Square root of the unexplained variance of between
+#               dependent and predicted values (AB and ABprime)
+# Dmax -        Maximum value of D.
+# DI -          Distortion Index.  A measure of unexplained variance.
+# F -           F-ratio, from Nakaya, 1997, Equation 50
+# P -           p value for F, also from Nakaya.
+# 
+# Of these, alphas, phi, and theta are likely of most use to the researcher
+# as specific descriptions of parts of the distortion.
+# Rsquare and DI are likely the most useful as overall or general measures of
+# distortion.
+
+def bdr(XY,AB):
+    
+    X = XY[:,0]
+    Y = XY[:,1]
+    A = AB[:,0]
+    B = AB[:,1]
+    
+    def ssq(x):
+        return np.sum((x-np.mean(x))**2);
+
+    # These equations are given in Table 2, page 475 of Friedman and Kohler
+    beta1 = (np.sum((X-np.mean(X))*(A-np.mean(A))) + np.sum((Y-np.mean(Y))*(B-np.mean(B))))/(ssq(X)+ssq(Y))
+    beta2 = (np.sum((X-np.mean(X))*(B-np.mean(B))) - np.sum((Y-np.mean(Y))*(A-np.mean(A))))/(ssq(X)+ssq(Y))
+    scale = (beta1**2 + beta2**2)**.5
+    theta = np.rad2deg(np.arctan2(beta2,beta1))
+    alpha1 = np.mean(A) - beta1*np.mean(X) + beta2*np.mean(Y)
+    alpha2 = np.mean(B) - beta2*np.mean(X) - beta1*np.mean(Y)
+    aPrime = np.array(alpha1 + beta1*X - beta2*Y)   # np.arrays because might come in as a dataframe
+    bPrime = np.array(alpha2 + beta2*X + beta1*Y)
+    rsquare = 1 - np.sum((A-aPrime)**2 + (B-bPrime)**2)/np.sum(ssq(A)+ssq(B))
+    D = np.sqrt(np.sum((A-aPrime)**2 + (B-bPrime)**2))  # Equivalent to D_AB in the article
+    Dmax = np.sqrt(ssq(A) + ssq(B))                     # Equivalent to Dmax_AB
+    # Dmax = sqrt(ssq(X) + ssq(Y));                # Note that these are square roots of equivalent numbers in table 3 of paper
+    DI = np.sqrt(1-rsquare)                        # This is how DI is computed in sample and equation 12, page 479
+    F = ((2*len(A) - 4) / (4 - 2)) * (rsquare / (1-rsquare))
+    P = 1 - stats.f.cdf(F,2,2*len(A)-4)
+    
+    result = {}
+    result['beta1']=beta1; result['beta2']=beta2; result['alpha1']=alpha1; 
+    result['alpha2']=alpha2; result['scale']=scale; result['theta']=theta;
+    result['aPrime']=aPrime; result['bPrime']=bPrime; result['rsquare']=rsquare; 
+    result['D']=D; result['Dmax']=Dmax; result['DI']=DI; result['F']=F; result['P']=P
+    
+    return result
+
+#%%  From: https://gist.github.com/sergeyprokudin/c4bf4059230da8db8256e36524993367
+
+def chamfer_distance(x, y, metric='l2', direction='bi'):
+    """Chamfer distance between two point clouds
+    Parameters
+    ----------
+    x: numpy array [n_points_x, n_dims]
+        first point cloud
+    y: numpy array [n_points_y, n_dims]
+        second point cloud
+    metric: string or callable, default ‘l2’
+        metric to use for distance computation. Any metric from scikit-learn or scipy.spatial.distance can be used.
+    direction: str
+        direction of Chamfer distance.
+            'y_to_x':  computes average minimal distance from every point in y to x
+            'x_to_y':  computes average minimal distance from every point in x to y
+            'bi': compute both
+    Returns
+    -------
+    chamfer_dist: float
+        computed bidirectional Chamfer distance:
+            sum_{x_i \in x}{\min_{y_j \in y}{||x_i-y_j||**2}} + sum_{y_j \in y}{\min_{x_i \in x}{||x_i-y_j||**2}}
+    """
+    
+    if direction=='y_to_x':
+        x_nn = NearestNeighbors(n_neighbors=1, leaf_size=1, algorithm='kd_tree', metric=metric).fit(x)
+        min_y_to_x = x_nn.kneighbors(y)[0]
+        chamfer_dist = np.mean(min_y_to_x)
+    elif direction=='x_to_y':
+        y_nn = NearestNeighbors(n_neighbors=1, leaf_size=1, algorithm='kd_tree', metric=metric).fit(y)
+        min_x_to_y = y_nn.kneighbors(x)[0]
+        chamfer_dist = np.mean(min_x_to_y)
+    elif direction=='bi':
+        x_nn = NearestNeighbors(n_neighbors=1, leaf_size=1, algorithm='kd_tree', metric=metric).fit(x)
+        min_y_to_x = x_nn.kneighbors(y)[0]
+        y_nn = NearestNeighbors(n_neighbors=1, leaf_size=1, algorithm='kd_tree', metric=metric).fit(y)
+        min_x_to_y = y_nn.kneighbors(x)[0]
+        chamfer_dist = np.mean(min_y_to_x) + np.mean(min_x_to_y)
+    else:
+        raise ValueError("Invalid direction type. Supported types: \'y_x\', \'x_y\', \'bi\'")
+        
+    return chamfer_dist
+
+
+#%%
+
+
+def hungarian_algorithm(XY,AB):
+    cost_matrix = cdist(XY,AB)
+    # Perform the Hungarian algorithm using linear_sum_assignment function from scipy.optimize
+    row_indices, col_indices = linear_sum_assignment(cost_matrix)
+    min_costs = cost_matrix[row_indices, col_indices]
+    
+    # Return the optimal assignment and the minimum cost
+    return row_indices, col_indices, min_costs
+
+#%%
+
+def bdr_bootstrap(XY,AB,k=10000):
+   rsquare = np.zeros(k)
+   DI = np.zeros(k)
+   for i in range(k):
+       idx = np.random.choice(len(AB),len(XY),replace=False)
+       ABs = AB[idx,:]
+       row,col,costs = hungarian_algorithm(XY,ABs)
+       bdr_result = bdr(XY,ABs[col,:])
+       rsquare[i] = bdr_result['rsquare']
+       DI[i] = bdr_result['DI']
+   return rsquare, DI   
