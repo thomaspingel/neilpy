@@ -2033,6 +2033,26 @@ def brassel_atmospheric_perspective(H,Z,k,flat=180,Zmid=None,reverse=False,C2=0)
 
 #%%
 
+
+# Convolution-based standard deviation kernel
+
+def std(X,strel):
+    Xsum = ndi.convolve(X, strel, mode='nearest')
+    Xss = ndi.convolve((X)**2,strel, mode='nearest')
+    Xm = Xsum / np.sum(strel)
+    STD = ((Xss - 2*Xm*Xsum + np.sum(strel)*Xm**2) / np.sum(strel))
+    STD[STD<0] = 0  # Sometimes there are numerical errors
+    STD = STD**.5
+    
+    return STD
+
+# This is an older version of STD above, and not correct, but leaving for
+# further re-examination.
+def std2(X,strel):
+    M = ndi.convolve(Z,strel/np.sum(strel),mode='nearest')
+    STD = ndi.convolve((M-X)**2,strel/np.sum(strel),mode='nearest')**.5
+
+
 def reduce_peaks(Z,radius,blend_rate=2,kernel_rate='auto'):
 
     # A higher value on blend_rate will tend to draw more from the original
@@ -2050,9 +2070,13 @@ def reduce_peaks(Z,radius,blend_rate=2,kernel_rate='auto'):
     #M = ndi.filters.generic_filter(I,np.nanmean,footprint=strel)
     M = ndi.convolve(Z,strel/np.sum(strel),mode='nearest')
     
-    #STD = ndi.filters.generic_filter(I,np.nanstd,footprint=strel)
-    # Should check this equation
-    STD = ndi.convolve((M - Z)**2,strel/np.sum(strel),mode='nearest')**.5
+    # This doesn't produce the correct weighted STD:
+    # STD = ndi.filters.generic_filter(I,np.nanstd,footprint=strel)
+    # This was what was originally used.
+    # STD = ndi.convolve((M - Z)**2,strel/np.sum(strel),mode='nearest')**.5
+    # Now, see std function above.
+    
+    STD = std(Z-M,strel)
     
     # The higher this value, the more it'll draw from the original
     V = (1-normalize(STD))**blend_rate
@@ -2092,6 +2116,8 @@ def topographic_position_index(X,radius=1,standardize=True):
     # and divide the result by that
     if standardize:
         # https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance
+        # Note: I think this formula for calculating SD is wrong.  See lab notes
+        # On or around 12/20/2023
         sd = np.sqrt(np.mean(ndi.convolve(X**2,strel,mode='nearest')) - np.mean(result)**2)
         result = result / sd
     
@@ -2717,3 +2743,6 @@ def bdr_bootstrap(XY,AB,k=10000):
        rsquare[i] = bdr_result['rsquare']
        DI[i] = bdr_result['DI']
    return rsquare, DI   
+
+
+#%%
